@@ -1,11 +1,21 @@
 {
   "name": "pi-web-toolkit",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch static pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel.",
-  "keywords": ["pi-package"],
-  "files": ["extensions", "README.md", "package.json"],
+  "author": "Wade Huang <fastwade11@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wade11s/pi-web-toolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wade11s/pi-web-toolkit/issues"
+  },
+  "homepage": "https://github.com/Wade11s/pi-web-toolkit#readme",
+  "keywords": ["pi-package", "pi-extension", "web-search", "scrapling", "agent-browser"],
+  "files": ["extensions", "docs", "README.md", "package.json", "LICENSE"],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
