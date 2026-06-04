@@ -25,10 +25,7 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/web_search.ts",
-      "./extensions/web_fetch.ts",
-      "./extensions/web_browse.ts",
-      "./extensions/web_batch_fetch.ts"
+      "./extensions/index.ts"
     ]
   }
 }
