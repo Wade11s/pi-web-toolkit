@@ -23,7 +23,7 @@ import { Type, type Static } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runScrapling } from "./utils/scrapling";
+import { runScraplingWithFallback } from "./utils/scrapling";
 
 export const WebFetchParamsSchema = Type.Object({
   url: Type.String({ description: "Full URL to fetch (e.g. https://example.com/article)" }),
@@ -57,24 +57,15 @@ const webFetchTool = defineTool({
     let tmpFull: string | undefined;
 
     try {
-      const cmd = params.stealthy ? "stealthy-fetch" : "fetch";
-      const args = ["extract", cmd, params.url, tmpFile, "--ai-targeted"];
-      if (params.selector) {
-        args.push("--css-selector", params.selector);
-      }
+      const { ok, stderr } = await runScraplingWithFallback(
+        params.url,
+        tmpFile,
+        { selector: params.selector, stealthy: params.stealthy, noGetFallback: params.stealthy },
+        signal,
+      );
 
-      const { stdout, stderr, exitCode } = await runScrapling(args, signal);
-
-      if (exitCode !== 0) {
-        // Try fallback to simple HTTP GET if fetch/stealthy-fetch failed
-        if (!params.stealthy) {
-          const fallback = await runScrapling(["extract", "get", params.url, tmpFile, "--ai-targeted"], signal);
-          if (fallback.exitCode !== 0) {
-            throw new Error(`Failed to fetch ${params.url}\n\nscrapling error:\n${stderr || fallback.stderr}`);
-          }
-        } else {
-          throw new Error(`Failed to fetch ${params.url}\n\nscrapling error:\n${stderr}`);
-        }
+      if (!ok) {
+        throw new Error(`Failed to fetch ${params.url}\n\nscrapling error:\n${stderr}`);
       }
 
       const content = await fs.promises.readFile(tmpFile, "utf-8");

@@ -24,7 +24,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const SEARXNG_URL = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
+
 
 interface SearxResult {
   title: string;
@@ -66,6 +66,7 @@ const webSearchTool = defineTool({
   parameters: WebSearchParamsSchema,
 
   async execute(_toolCallId, params, signal) {
+    const searxngUrl = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
     const maxResults = Math.floor(Math.min(50, Math.max(1, params.results ?? 10)));
     const searchParams = new URLSearchParams({
       q: params.query,
@@ -73,7 +74,7 @@ const webSearchTool = defineTool({
       language: params.language ?? "auto",
     });
 
-    const url = `${SEARXNG_URL}/search?${searchParams.toString()}`;
+    const url = `${searxngUrl}/search?${searchParams.toString()}`;
 
     let fullOutputPath: string | undefined;
 
@@ -140,7 +141,7 @@ const webSearchTool = defineTool({
         details: { query: data.query, totalResults: data.results.length, results: data.results.slice(0, maxResults), fullOutputPath },
       };
     } catch (err: any) {
-      throw new Error(`Failed to query SearXNG at ${SEARXNG_URL}: ${err.message ?? err}`);
+      throw new Error(`Failed to query SearXNG at ${searxngUrl}: ${err.message ?? err}`);
     }
   },
 

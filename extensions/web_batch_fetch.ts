@@ -24,7 +24,7 @@ import { Type, type Static } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runScrapling } from "./utils/scrapling";
+import { runScraplingWithFallback } from "./utils/scrapling";
 
 interface FetchTask {
   url: string;
@@ -37,18 +37,15 @@ async function fetchOne(
   stealthy: boolean,
   signal?: AbortSignal,
 ): Promise<{ url: string; content: string; size: number; ok: boolean; error?: string }> {
-  const cmd = stealthy ? "stealthy-fetch" : "fetch";
-  const args = ["extract", cmd, task.url, task.tmpFile, "--ai-targeted"];
-  if (selector) args.push("--css-selector", selector);
+  const { ok: fetchOk, stderr } = await runScraplingWithFallback(
+    task.url,
+    task.tmpFile,
+    { selector, stealthy },
+    signal,
+  );
 
-  const { stderr, exitCode } = await runScrapling(args, signal);
-
-  if (exitCode !== 0) {
-    // Fallback to GET
-    const fallback = await runScrapling(["extract", "get", task.url, task.tmpFile, "--ai-targeted"], signal);
-    if (fallback.exitCode !== 0) {
-      return { url: task.url, content: "", size: 0, ok: false, error: stderr || fallback.stderr };
-    }
+  if (!fetchOk) {
+    return { url: task.url, content: "", size: 0, ok: false, error: stderr };
   }
 
   try {
