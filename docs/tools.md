@@ -2,21 +2,26 @@
 
 ## `web_search`
 
-Search the web via SearXNG. Returns ranked results with title, URL, and snippet. Automatically aggregates up to 3 pages of SearXNG results when more than ~20 are needed.
+Search the web via SearXNG or Tavily (configurable via `SEARCH_PROVIDER` env var). Returns ranked results with title, URL, and snippet.
+
+**Backend selection:** Set `SEARCH_PROVIDER` to `searxng` (default) or `tavily`.
+
+- **SearXNG:** Self-hosted, no API key required. Automatically aggregates up to 3 pages when more than ~20 results are needed. Requires `SEARXNG_URL`.
+- **Tavily:** Cloud API, requires `TAVILY_API_KEY`. Returns up to 20 results per query. No pagination needed.
 
 ```typescript
 {
   query: string,           // Search query
-  language?: string,       // Language code (en, de, fr...). Default: "auto"
-  results?: number,        // Max results (1–60). Default: 20. Automatically pages through SearXNG (up to 3 pages) if needed.
+  language?: string,       // Language code (en, de, fr...). Default: "auto" (SearXNG only; ignored by Tavily)
+  results?: number,        // Max results (1–60). Default: 20. SearXNG auto-pages up to 3 pages; Tavily capped at 20.
 }
 ```
 
 **When to use:** The user asks about current events, facts, or anything requiring up-to-date information. This is always the **first step** of web research.
 
-**Empty results behavior:** When no results are found, `web_search` returns a list of **suggestions** — alternative queries that SearXNG believes may yield better results. The agent can use these suggestions to automatically refine and retry the search.
+**Empty results behavior (SearXNG):** When no results are found, `web_search` returns a list of **suggestions** — alternative queries that SearXNG believes may yield better results. The agent can use these suggestions to automatically refine and retry the search.
 
-**Pagination:** `web_search` automatically fetches up to 3 pages from SearXNG and deduplicates by URL. You do not need to call it multiple times for deeper results.
+**Pagination (SearXNG):** `web_search` automatically fetches up to 3 pages from SearXNG and deduplicates by URL. You do not need to call it multiple times for deeper results.
 
 ---
 

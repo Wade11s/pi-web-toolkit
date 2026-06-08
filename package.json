@@ -26,6 +26,9 @@
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
+  "optionalDependencies": {
+    "@tavily/core": "^0.0.7"
+  },
   "pi": {
     "extensions": [
       "./extensions/index.ts"

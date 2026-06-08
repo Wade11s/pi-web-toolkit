@@ -13,7 +13,7 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 
 | Tool | Backend | Purpose | Current Limit |
 |------|---------|---------|---------------|
-| **`web_search`** | [SearXNG](https://github.com/searxng/searxng) | Search the web with scored, ranked results from multiple engines — always the first step in web research | 20 results (max 60, auto-pages up to 3 pages) |
+| **`web_search`** | [SearXNG](https://github.com/searxng/searxng) or [Tavily](https://tavily.com) | Search the web with scored, ranked results — always the first step in web research | SearXNG: 20 results (max 60, auto-pages up to 3 pages); Tavily: up to 20 results |
 | **`web_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch a single static page as clean markdown | — |
 | **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 2–15 pages in parallel for research synthesis | 3 concurrent (max 5) |
 | **`web_browse`** | [agent-browser](https://github.com/vercel-labs/agent-browser) | Interact with a page (click, scroll, fill) then extract content | 25 actions |
@@ -64,11 +64,18 @@ All tools are configured via **environment variables** at runtime — no rebuild
 | Variable | Default | Used By | Description |
 |----------|---------|---------|-------------|
 | `SEARXNG_URL` | `http://localhost:8080` | `web_search` | Your SearXNG instance endpoint |
+| `SEARCH_PROVIDER` | `searxng` | `web_search` | Search backend: `searxng` (default) or `tavily` |
+| `TAVILY_API_KEY` | — | `web_search` | Tavily API key (required when `SEARCH_PROVIDER=tavily`) |
 
 Set before starting pi:
 
 ```bash
+# SearXNG (default)
 export SEARXNG_URL="https://searxng.example.com"
+
+# Or use Tavily instead
+export SEARCH_PROVIDER="tavily"
+export TAVILY_API_KEY="tvly-YOUR_API_KEY"
 ```
 
 ## Project Structure
