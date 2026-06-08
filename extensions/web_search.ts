@@ -129,7 +129,7 @@ const webSearchTool = defineTool({
         }
         return {
           content: [{ type: "text", text }],
-          details: { query: finalQuery, totalResults: 0, results: [], fullOutputPath: undefined },
+          details: { query: finalQuery, totalResults: 0, results: [] as SearxResult[], fullOutputPath: undefined as string | undefined },
         };
       }
 
@@ -196,7 +196,10 @@ const webSearchTool = defineTool({
       results?: Array<{ title?: string; url?: string; score?: number; engine?: string; content?: string }>;
       fullOutputPath?: string;
     } | undefined;
-    const showing = details?.results?.length ?? 0;
+    if (!details) {
+      return new Text(theme.fg("error", "No result details"), 0, 0);
+    }
+    const showing = details.results?.length ?? 0;
     const total = details?.totalResults ?? 0;
     let text = theme.fg("success", `✓ ${showing} unique results`);
     if (total > showing) {
