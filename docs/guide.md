@@ -32,7 +32,7 @@ User asks about something external / current
 
 | | `web_fetch` | `web_browse` | `web_batch_fetch` |
 |--|-------------|--------------|-------------------|
-| **Pages** | 1 | 1 | 2–10 |
+| **Pages** | 1 | 1 | 2–15 |
 | **Browser** | Yes (scrapling) | Yes (agent-browser) | Yes (scrapling) |
 | **Interaction** | ❌ No | ✅ Click, fill, scroll, wait | ❌ No |
 | **Selector** | ✅ Per-URL | ✅ Final state | ✅ Applied to all |

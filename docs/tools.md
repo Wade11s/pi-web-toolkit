@@ -2,17 +2,21 @@
 
 ## `web_search`
 
-Search the web via SearXNG. Returns ranked results with title, URL, and snippet.
+Search the web via SearXNG. Returns ranked results with title, URL, and snippet. Automatically aggregates up to 3 pages of SearXNG results when more than ~20 are needed.
 
 ```typescript
 {
   query: string,           // Search query
   language?: string,       // Language code (en, de, fr...). Default: "auto"
-  results?: number,        // Max results (1–50). Default: 10
+  results?: number,        // Max results (1–60). Default: 20. Automatically pages through SearXNG (up to 3 pages) if needed.
 }
 ```
 
 **When to use:** The user asks about current events, facts, or anything requiring up-to-date information. This is always the **first step** of web research.
+
+**Empty results behavior:** When no results are found, `web_search` returns a list of **suggestions** — alternative queries that SearXNG believes may yield better results. The agent can use these suggestions to automatically refine and retry the search.
+
+**Pagination:** `web_search` automatically fetches up to 3 pages from SearXNG and deduplicates by URL. You do not need to call it multiple times for deeper results.
 
 ---
 

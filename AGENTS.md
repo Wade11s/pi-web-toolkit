@@ -83,6 +83,56 @@ Pull requests should:
 - Reference any related issues
 - Keep changes scoped to a single tool or concern
 - Update `docs/tools.md` if parameters or behavior change
+- Update `CHANGELOG.md` only when cutting a new release (bumping version)
+
+### Commit Message Template
+
+When a single change touches multiple dimensions (logic, UI, docs, meta), use a scoped title and categorize the body:
+
+```
+<type>(<scope>): <short description>
+
+Core:
+- <execute-level change>
+- <schema / API change>
+- <backend logic change>
+
+UI:
+- <renderCall / renderResult change>
+- <TUX / visual change>
+- <keybinding or interaction change>
+
+Docs:
+- <README / tools.md / guide.md change>
+
+Meta:
+- <CI / build / repo governance change>
+```
+
+Allowed categories: `Core`, `UI`, `Docs`, `Meta`. Omit empty categories.
+
+Example:
+```
+feat(web_search): auto-paginate up to 3 pages and redesign TUI
+
+Core:
+- Increase max results from 50 to 60, default from 10 to 20
+- Auto-paginate up to 3 SearXNG pages with URL deduplication
+- Always write full output to temp file (not only when truncated)
+
+UI:
+- Collapsed: top 3 by score as 'Title [engine]'
+- Expanded (Ctrl+O): top 10 cards with title|engine|score, URL,
+  and 120-char snippet preview
+- Full output path rendered in accent color
+
+Docs:
+- Sync README and tools.md with new limits and pagination behavior
+- Sync guide.md: web_batch_fetch page limit 2-10 → 2-15
+
+Meta:
+- Add CHANGELOG update policy to AGENTS.md
+```
 
 ## Agent-Specific Instructions
 
