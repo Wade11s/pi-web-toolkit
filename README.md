@@ -15,7 +15,7 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 |------|---------|---------|---------------|
 | **`web_search`** | [SearXNG](https://github.com/searxng/searxng) | Search the web with scored, ranked results from multiple engines — always the first step in web research | 10 results (max 50) |
 | **`web_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch a single static page as clean markdown | — |
-| **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 2–10 pages in parallel for research synthesis | 3 concurrent (max 5) |
+| **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 2–15 pages in parallel for research synthesis | 3 concurrent (max 5) |
 | **`web_browse`** | [agent-browser](https://github.com/vercel-labs/agent-browser) | Interact with a page (click, scroll, fill) then extract content | 25 actions |
 
 ## Quick Start

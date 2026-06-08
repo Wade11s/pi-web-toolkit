@@ -81,9 +81,9 @@ async function mapWithConcurrencyLimit<TIn, TOut>(
 
 export const WebBatchFetchParamsSchema = Type.Object({
   urls: Type.Array(Type.String(), {
-    description: "List of URLs to fetch (2–5 recommended)",
+    description: "List of URLs to fetch (2–5 recommended, max 15)",
     minItems: 1,
-    maxItems: 10,
+    maxItems: 15,
   }),
   selector: Type.Optional(Type.String({
     description: "CSS selector applied to ALL pages to extract only relevant content",
@@ -118,7 +118,7 @@ const webBatchFetchTool = defineTool({
     "Use web_batch_fetch for cross-referencing sources, comparing implementations, or synthesizing research from multiple sites.",
     "For a single URL, always use web_fetch — it supports per-URL selectors and stealthy mode.",
     "If a page in the batch fails, the tool reports the error but continues with the others.",
-    "Keep batch sizes small (≤5) to avoid overwhelming the browser and token budget.",
+    "Keep batch sizes reasonable (≤8) to avoid overwhelming the browser and token budget.",
   ],
   parameters: WebBatchFetchParamsSchema,
 
