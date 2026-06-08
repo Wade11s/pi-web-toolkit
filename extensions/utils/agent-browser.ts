@@ -26,7 +26,7 @@ export interface AgentBrowserBatchItem {
 }
 
 function requireString(action: BrowseAction, field: "selector" | "value" | "key"): string {
-  const value = action[field];
+  const value = action[field] as string | undefined;
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Action "${action.type}" requires non-empty ${field}`);
   }
@@ -34,11 +34,11 @@ function requireString(action: BrowseAction, field: "selector" | "value" | "key"
 }
 
 function requireInteger(action: BrowseAction, field: "ms" | "amount"): number {
-  const value = action[field];
-  if (!Number.isInteger(value) || value < 0) {
+  const value = action[field] as number | undefined;
+  if (!Number.isInteger(value) || (value as number) < 0) {
     throw new Error(`Action "${action.type}" requires non-negative integer ${field}`);
   }
-  return value;
+  return value as number;
 }
 
 function waitForSelectorScript(selector: string, state: "attached" | "visible" | "hidden"): string {
