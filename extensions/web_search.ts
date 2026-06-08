@@ -1,10 +1,12 @@
 /**
- * SearXNG Web Search Extension for Pi
+ * Web Search Extension for Pi
  *
- * Provides a `web_search` tool that queries a SearXNG instance.
+ * Provides a `web_search` tool that queries a SearXNG instance or Tavily API.
  *
  * Configuration:
- *   Set SEARXNG_URL env var to your instance (default: http://localhost:8080)
+ *   Set SEARCH_PROVIDER env var to 'searxng' (default) or 'tavily'.
+ *   For SearXNG: set SEARXNG_URL env var to your instance (default: http://localhost:8080)
+ *   For Tavily:  set TAVILY_API_KEY env var to your Tavily API key.
  *
  * Usage:
  *   The LLM can call web_search with a query to get search results.
@@ -40,6 +42,49 @@ interface SearxResponse {
   suggestions?: string[];
 }
 
+type SearchProvider = "searxng" | "tavily";
+
+function getSearchProvider(): SearchProvider {
+  const provider = (process.env.SEARCH_PROVIDER || "searxng").toLowerCase();
+  if (provider === "tavily") return "tavily";
+  return "searxng";
+}
+
+async function searchViaTavily(
+  query: string,
+  maxResults: number,
+): Promise<{ results: SearxResult[]; query: string }> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) {
+    throw new Error("TAVILY_API_KEY environment variable is required when SEARCH_PROVIDER=tavily");
+  }
+
+  let tavily: any;
+  try {
+    tavily = (await import("@tavily/core")).tavily;
+  } catch {
+    throw new Error(
+      "Failed to import @tavily/core. Install it with: npm install @tavily/core",
+    );
+  }
+
+  const client = tavily({ apiKey });
+  const response = await client.search(query, {
+    maxResults: Math.min(maxResults, 20),
+    topic: "general",
+  });
+
+  const results: SearxResult[] = (response.results ?? []).map((r: any) => ({
+    title: r.title ?? "",
+    url: r.url ?? "",
+    content: r.content,
+    engine: "tavily",
+    score: r.score,
+  }));
+
+  return { results, query };
+}
+
 export const WebSearchParamsSchema = Type.Object({
   query: Type.String({ description: "Search query" }),
   language: Type.Optional(Type.String({ description: "Language code (e.g. en, en-US, de). Default: auto", default: "auto" })),
@@ -52,9 +97,10 @@ const webSearchTool = defineTool({
   name: "web_search",
   label: "Web Search",
   description: [
-    "Search the web using a SearXNG instance.",
+    "Search the web using SearXNG or Tavily (configurable via SEARCH_PROVIDER env var).",
     "Returns a list of results with title, URL, and snippet.",
-    "Automatically aggregates up to 3 pages of SearXNG results when more than ~20 are needed.",
+    "With SearXNG: automatically aggregates up to 3 pages when more than ~20 are needed.",
+    "With Tavily: returns up to 20 results per query.",
     "Use web_search when the user asks about current events, facts, or anything",
     "that requires up-to-date information beyond the model's training data.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
@@ -68,7 +114,7 @@ const webSearchTool = defineTool({
   parameters: WebSearchParamsSchema,
 
   async execute(_toolCallId, params, signal) {
-    const searxngUrl = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
+    const provider = getSearchProvider();
     const maxResults = Math.floor(Math.min(60, Math.max(1, params.results ?? 20)));
     const language = params.language ?? "auto";
 
@@ -77,48 +123,63 @@ const webSearchTool = defineTool({
     let suggestions: string[] | undefined;
     let finalQuery = params.query;
     let fullOutputPath: string | undefined;
-    const MAX_PAGES = 3;
 
     try {
-      for (let page = 1; page <= MAX_PAGES; page++) {
-        const searchParams = new URLSearchParams({
-          q: params.query,
-          format: "json",
-          language,
-          pageno: String(page),
-        });
-
-        const response = await fetch(`${searxngUrl}/search?${searchParams.toString()}`, {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          signal,
-        });
-
-        if (!response.ok) {
-          const body = await response.text().catch(() => "");
-          throw new Error(`SearXNG error: ${response.status} ${response.statusText}\n${body}`);
-        }
-
-        const data = (await response.json()) as SearxResponse;
-        finalQuery = data.query;
-
-        if (data.suggestions && data.suggestions.length > 0 && !suggestions) {
-          suggestions = data.suggestions;
-        }
-
-        if (!data.results || data.results.length === 0) {
-          break;
-        }
-
-        for (const r of data.results) {
+      if (provider === "tavily") {
+        // Tavily code path
+        const tavilyResponse = await searchViaTavily(params.query, maxResults);
+        finalQuery = tavilyResponse.query;
+        for (const r of tavilyResponse.results) {
           if (!seenUrls.has(r.url)) {
             seenUrls.add(r.url);
             allResults.push(r);
           }
         }
+      } else {
+        // SearXNG code path (default)
+        const searxngUrl = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
+        const MAX_PAGES = 3;
 
-        if (allResults.length >= maxResults) {
-          break;
+        for (let page = 1; page <= MAX_PAGES; page++) {
+          const searchParams = new URLSearchParams({
+            q: params.query,
+            format: "json",
+            language,
+            pageno: String(page),
+          });
+
+          const response = await fetch(`${searxngUrl}/search?${searchParams.toString()}`, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            signal,
+          });
+
+          if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`SearXNG error: ${response.status} ${response.statusText}\n${body}`);
+          }
+
+          const data = (await response.json()) as SearxResponse;
+          finalQuery = data.query;
+
+          if (data.suggestions && data.suggestions.length > 0 && !suggestions) {
+            suggestions = data.suggestions;
+          }
+
+          if (!data.results || data.results.length === 0) {
+            break;
+          }
+
+          for (const r of data.results) {
+            if (!seenUrls.has(r.url)) {
+              seenUrls.add(r.url);
+              allResults.push(r);
+            }
+          }
+
+          if (allResults.length >= maxResults) {
+            break;
+          }
         }
       }
 
@@ -173,6 +234,10 @@ const webSearchTool = defineTool({
         details: { query: finalQuery, totalResults: allResults.length, results: allResults.slice(0, maxResults), fullOutputPath },
       };
     } catch (err: any) {
+      if (provider === "tavily") {
+        throw new Error(`Failed to query Tavily: ${err.message ?? err}`);
+      }
+      const searxngUrl = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
       throw new Error(`Failed to query SearXNG at ${searxngUrl}: ${err.message ?? err}`);
     }
   },
