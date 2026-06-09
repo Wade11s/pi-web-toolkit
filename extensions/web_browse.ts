@@ -14,7 +14,6 @@
 import {
   defineTool,
   type ExtensionAPI,
-  truncateHead,
   formatSize,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -22,15 +21,14 @@ import {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import {
   type BrowseAction,
   buildBatchCommands,
   runAgentBrowserBatch,
   closeAgentBrowserSession,
 } from "./utils/agent-browser";
+import { writeWithFallback } from "./utils/output-sink";
+import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 export const WebBrowseActionSchema = Type.Object({
   type: StringEnum(["click", "fill", "type", "press", "wait", "wait_selector", "scroll"] as const),
@@ -55,6 +53,34 @@ export const WebBrowseParamsSchema = Type.Object({
 });
 
 export type WebBrowseInput = Static<typeof WebBrowseParamsSchema>;
+
+function formatBrowseStep(action: BrowseAction): string {
+  switch (action.type) {
+    case "click":
+      return `click ${action.selector ?? ""}`;
+    case "fill":
+      return `fill ${action.selector ?? ""} "${action.value ?? ""}"`;
+    case "type":
+      return `type ${action.selector ?? ""} "${action.value ?? ""}"`;
+    case "press":
+      return action.selector
+        ? `focus ${action.selector} + press ${action.key ?? ""}`
+        : `press ${action.key ?? ""}`;
+    case "wait":
+      return action.selector
+        ? `wait for ${action.selector}`
+        : `wait ${action.ms ?? 0}ms`;
+    case "wait_selector":
+      return `wait for ${action.selector ?? ""} (${action.state ?? "visible"})`;
+    case "scroll": {
+      const dir = action.direction ?? "down";
+      if (dir === "top" || dir === "bottom") return `scroll to ${dir}`;
+      return `scroll ${dir}${action.amount ? ` ${action.amount}px` : ""}`;
+    }
+    default:
+      return String((action as any).type);
+  }
+}
 
 const webBrowseTool = defineTool({
   name: "web_browse",
@@ -82,10 +108,22 @@ const webBrowseTool = defineTool({
   async execute(toolCallId, params, signal, onUpdate) {
     let fullOutputPath: string | undefined;
     const session = `pi-web-browse-${toolCallId}`;
+    const actionCount = params.actions.length;
+    const steps = [
+      `open ${params.url}`,
+      ...(params.actions as BrowseAction[]).map(formatBrowseStep),
+      params.selector ? `get text ${params.selector}` : "snapshot",
+      "get title",
+      "get url",
+    ];
+
+    // Stream planned steps for isPartial rendering
+    onUpdate?.({
+      content: [{ type: "text", text: `Browsing ${params.url} (${actionCount} actions)...` }],
+      details: { url: params.url, steps, actionCount, selector: params.selector, headless: params.headless ?? true },
+    });
 
     try {
-      onUpdate?.({ content: [{ type: "text", text: `Browsing ${params.url}...` }], details: {} });
-
       const commands = buildBatchCommands(
         params.url,
         params.actions as BrowseAction[],
@@ -126,6 +164,7 @@ const webBrowseTool = defineTool({
 
       const title = titleResult?.result?.title ?? "";
       const finalUrl = urlResult?.result?.url ?? params.url;
+      const preview = content.replace(/\s+/g, " ").trim().slice(0, 500);
 
       const lines: string[] = [
         `Title: ${title || "(no title)"}`,
@@ -137,24 +176,23 @@ const webBrowseTool = defineTool({
       ];
 
       const rawText = lines.join("\n");
-      const truncation = truncateHead(rawText, {
-        maxLines: DEFAULT_MAX_LINES,
-        maxBytes: DEFAULT_MAX_BYTES,
+      const sink = await writeWithFallback(rawText, {
+        tmpPrefix: "pi-web-browse-",
       });
-
-      let finalText = truncation.content;
-      if (truncation.truncated) {
-        const fullOutputDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-web-browse-"));
-        fullOutputPath = path.join(fullOutputDir, "output.txt");
-        await fs.promises.writeFile(fullOutputPath, rawText, "utf-8");
-        finalText += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}). Full output saved to: ${fullOutputPath}]`;
-      }
-
-      onUpdate?.({ content: [{ type: "text", text: `Extracted from ${finalUrl}` }], details: {} });
+      fullOutputPath = sink.fullOutputPath;
 
       return {
-        content: [{ type: "text", text: finalText }],
-        details: { title, url: finalUrl, fullOutputPath },
+        content: [{ type: "text", text: sink.text }],
+        details: {
+          title,
+          url: finalUrl,
+          fullOutputPath,
+          preview,
+          selector: params.selector,
+          headless: params.headless ?? true,
+          actionCount,
+          steps,
+        },
       };
     } catch (err: any) {
       throw new Error(`Error browsing ${params.url}: ${err.message ?? err}`);
@@ -167,24 +205,109 @@ const webBrowseTool = defineTool({
     let text = theme.fg("toolTitle", theme.bold("web_browse "));
     text += theme.fg("muted", args.url);
     text += theme.fg("dim", ` (${args.actions?.length ?? 0} actions)`);
+    if (args.selector) {
+      text += theme.fg("dim", ` [selector=${args.selector}]`);
+    }
+    if (args.headless === false) {
+      text += theme.fg("dim", " [headed]");
+    }
     return new Text(text, 0, 0);
   },
 
-  renderResult(result, { expanded, isPartial }, theme) {
+  renderResult(result, { expanded, isPartial }, theme, context) {
+    const isError = context?.isError ?? false;
+
     if (isPartial) {
-      return new Text(theme.fg("warning", "Browsing..."), 0, 0);
+      const progress = (result.details as any);
+      const steps = progress?.steps as string[] | undefined;
+      const url = progress?.url as string | undefined;
+      const actionCount = progress?.actionCount ?? steps?.length ?? 0;
+      let text = theme.fg("warning", "Browsing");
+      if (url) {
+        text += `  ${theme.fg("dim", abbreviateUrl(url))}`;
+      }
+      text += theme.fg("dim", ` (${actionCount} steps)`);
+      if (steps && steps.length > 0) {
+        // Limit to first 5 steps to avoid blowing up vertical space
+        const maxPreviewSteps = 5;
+        for (let i = 0; i < Math.min(steps.length, maxPreviewSteps); i++) {
+          text += `\n  ${theme.fg("dim", `[${i + 1}] ${steps[i]}`)}`;
+        }
+        if (steps.length > maxPreviewSteps) {
+          text += `\n  ${theme.fg("muted", `... and ${steps.length - maxPreviewSteps} more`)}`;
+        }
+      }
+      return new Text(text, 0, 0);
     }
-    const details = result.details as { title?: string; url?: string; fullOutputPath?: string } | undefined;
+
+    const details = result.details as {
+      title?: string;
+      url?: string;
+      fullOutputPath?: string;
+      preview?: string;
+      selector?: string;
+      headless?: boolean;
+      actionCount?: number;
+      steps?: string[];
+    } | undefined;
+
+    if (isError) {
+      const errText = getErrorText(result);
+      let text = theme.fg("error", "✗ Browse failed");
+      if (details?.url) text += `  ${theme.fg("dim", abbreviateUrl(details.url))}`;
+      text += `\n\n  ${theme.fg("toolOutput", errText)}`;
+      if (details?.steps && details.steps.length > 0) {
+        text += `\n\n${theme.fg("dim", "Steps attempted:")}`;
+        for (let i = 0; i < details.steps.length; i++) {
+          text += `\n  ${theme.fg("dim", `[${i + 1}] ${details.steps[i]}`)}`;
+        }
+      }
+      return new Text(text, 0, 0);
+    }
+
     let text = theme.fg("success", "✓ Browsed");
     if (details?.title) {
-      text += theme.fg("muted", ` — ${details.title}`);
+      text += `  ${theme.fg("toolTitle", details.title)}`;
     }
-    if (expanded && details?.url) {
-      text += `\n${theme.fg("dim", details.url)}`;
+    if (details?.url) {
+      text += `\n  ${theme.fg("dim", abbreviateUrl(details.url))}`;
     }
-    if (expanded && details?.fullOutputPath) {
-      text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
+    if (details?.actionCount) {
+      text += theme.fg("muted", ` (${details.actionCount} actions)`);
     }
+
+    if (details?.selector) {
+      text += `\n  ${theme.fg("dim", `[selector=${details.selector}]`)}`;
+    }
+    if (details?.headless === false) {
+      text += `${details?.selector ? "" : "\n  "}${theme.fg("dim", "[headed]")}`;
+    }
+
+    if (!expanded && details?.preview) {
+      const snippet = normalizeWhitespace(details.preview);
+      const short = snippet.length > 160
+        ? snippet.slice(0, 160).replace(/\s+\S*$/, "") + "..."
+        : snippet;
+      text += `\n\n  ${theme.fg("muted", short)}`;
+    }
+
+    if (expanded) {
+      if (details?.steps && details.steps.length > 0) {
+        text += `\n\n${theme.fg("dim", "Steps:")}`;
+        for (let i = 0; i < details.steps.length; i++) {
+          text += `\n  ${theme.fg("dim", `[${i + 1}] ${details.steps[i]}`)}`;
+        }
+      }
+
+      if (details?.preview) {
+        text += `\n\n  ${theme.fg("muted", normalizeWhitespace(details.preview))}`;
+      }
+
+      if (details?.fullOutputPath) {
+        text += `\n\n${theme.fg("accent", `Full output: ${details.fullOutputPath}`)}`;
+      }
+    }
+
     return new Text(text, 0, 0);
   },
 });

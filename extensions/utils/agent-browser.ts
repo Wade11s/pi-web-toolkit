@@ -5,7 +5,7 @@
  * command building, process spawning, JSON parsing, and session cleanup.
  */
 
-import { spawn } from "node:child_process";
+import { runCLI } from "./cli-runner";
 
 export interface BrowseAction {
   type: "click" | "fill" | "type" | "press" | "wait" | "wait_selector" | "scroll";
@@ -128,7 +128,7 @@ export function buildBatchCommands(
   return commands;
 }
 
-export function runAgentBrowserBatch(
+export async function runAgentBrowserBatch(
   commands: string[][],
   options: { session: string; headless: boolean; signal?: AbortSignal; timeout?: number },
 ): Promise<AgentBrowserBatchItem[]> {
@@ -136,99 +136,44 @@ export function runAgentBrowserBatch(
   if (!options.headless) args.push("--headed");
   args.push("batch", "--bail", "--json");
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn("agent-browser", args, {
-      shell: false,
-      stdio: ["pipe", "pipe", "pipe"],
+  try {
+    const result = await runCLI({
+      command: "agent-browser",
+      args,
+      stdin: JSON.stringify(commands),
+      timeout: options.timeout,
+      signal: options.signal,
     });
 
-    let stdout = "";
-    let stderr = "";
-    let timeoutId: NodeJS.Timeout | undefined;
-    let settled = false;
-
-    const cleanup = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (options.signal) options.signal.removeEventListener("abort", kill);
-    };
-
-    const settleReject = (err: Error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err);
-    };
-
-    const kill = () => proc.kill("SIGTERM");
-
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    if (options.timeout) {
-      timeoutId = setTimeout(() => {
-        proc.kill("SIGTERM");
-        settleReject(new Error(`agent-browser timed out after ${options.timeout}ms`));
-      }, options.timeout);
+    if (result.exitCode !== 0 && !result.stdout.trim()) {
+      throw new Error(`agent-browser failed (exit ${result.exitCode}):\n${result.stderr || "unknown error"}`);
     }
 
-    proc.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-
-      if (code !== 0 && !stdout.trim()) {
-        reject(new Error(`agent-browser failed (exit ${code}):\n${stderr || "unknown error"}`));
-        return;
-      }
-
-      try {
-        const results = JSON.parse(stdout) as AgentBrowserBatchItem[];
-        resolve(results);
-      } catch (err: any) {
-        reject(new Error(
-          `Failed to parse agent-browser output: ${err.message}\nstdout: ${stdout}\nstderr: ${stderr}`
-        ));
-      }
-    });
-
-    proc.on("error", (err: any) => {
-      if (err.code === "ENOENT") {
-        settleReject(new Error(
-          "agent-browser is not installed.\n\nInstall it with:\n  npm i -g agent-browser && agent-browser install\n\nThen run: agent-browser doctor"
-        ));
-      } else {
-        settleReject(err);
-      }
-    });
-
-    if (options.signal) {
-      if (options.signal.aborted) kill();
-      else options.signal.addEventListener("abort", kill, { once: true });
+    try {
+      return JSON.parse(result.stdout) as AgentBrowserBatchItem[];
+    } catch (err: any) {
+      throw new Error(
+        `Failed to parse agent-browser output: ${err.message}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+      );
     }
-
-    proc.stdin.write(JSON.stringify(commands));
-    proc.stdin.end();
-  });
+  } catch (err: any) {
+    if (err.message === "agent-browser is not installed") {
+      throw new Error(
+        "agent-browser is not installed.\n\nInstall it with:\n  npm i -g agent-browser && agent-browser install\n\nThen run: agent-browser doctor"
+      );
+    }
+    throw err;
+  }
 }
 
-export function closeAgentBrowserSession(session: string, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const proc = spawn("agent-browser", ["--session", session, "close"], {
-      shell: false,
-      stdio: ["ignore", "ignore", "ignore"],
+export async function closeAgentBrowserSession(session: string, signal?: AbortSignal): Promise<void> {
+  try {
+    await runCLI({
+      command: "agent-browser",
+      args: ["--session", session, "close"],
+      signal,
     });
-    const done = () => resolve();
-    proc.on("close", done);
-    proc.on("error", done);
-    if (signal) {
-      const kill = () => proc.kill("SIGTERM");
-      if (signal.aborted) kill();
-      else signal.addEventListener("abort", kill, { once: true });
-    }
-  });
+  } catch {
+    // Best-effort cleanup — ignore errors
+  }
 }

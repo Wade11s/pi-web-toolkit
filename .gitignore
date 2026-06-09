@@ -10,3 +10,6 @@ npm-debug.log*
 dist/
 build/
 *.tgz
+
+# Package manager lockfile (library project — reproducible by downstream consumers)
+package-lock.json

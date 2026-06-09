@@ -14,7 +14,6 @@
 import {
   defineTool,
   type ExtensionAPI,
-  truncateHead,
   formatSize,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -25,6 +24,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { runScraplingWithFallback } from "./utils/scrapling";
+import { extractPreview } from "./utils/content-preview";
+import { writeWithFallback } from "./utils/output-sink";
+import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 interface FetchTask {
   url: string;
@@ -114,7 +116,8 @@ const webBatchFetchTool = defineTool({
   ].join(" "),
   promptSnippet: "Fetch multiple URLs in parallel for research",
   promptGuidelines: [
-    "Use web_batch_fetch when web_search returns multiple (2–5) relevant pages and the agent needs to read them all.",
+    "Use web_batch_fetch when web_search returns multiple (2–5) relevant pages and the agent needs to read them all at once.",
+    "Prefer web_batch_fetch over repeated web_fetch calls when reading multiple pages for comparison or synthesis.",
     "Use web_batch_fetch for cross-referencing sources, comparing implementations, or synthesizing research from multiple sites.",
     "For a single URL, always use web_fetch — it supports per-URL selectors and stealthy mode.",
     "If a page in the batch fails, the tool reports the error but continues with the others.",
@@ -129,17 +132,48 @@ const webBatchFetchTool = defineTool({
       tmpFile: path.join(tmpDir, `page-${i}.md`),
     }));
     let fullOutputPath: string | undefined;
+    const concurrency = Math.floor(Math.min(5, Math.max(1, params.max_concurrency ?? 3)));
+
+    // Progress tracking for live UI updates
+    const progressItems = tasks.map((t) => ({
+      url: t.url,
+      status: "fetching" as "fetching" | "done" | "error",
+      size: 0,
+      error: "",
+    }));
+
+    const sendProgress = () => {
+      const completed = progressItems.filter((p) => p.status !== "fetching").length;
+      const succeeded = progressItems.filter((p) => p.status === "done").length;
+      const failed = progressItems.filter((p) => p.status === "error").length;
+      onUpdate?.({
+        content: [{ type: "text", text: `Fetching ${tasks.length} pages (${completed}/${tasks.length})...` }],
+        details: {
+          progress: {
+            total: tasks.length,
+            completed,
+            succeeded,
+            failed,
+            items: progressItems.map((p) => ({ ...p })),
+          },
+        },
+      });
+    };
+
+    sendProgress();
 
     try {
-      const concurrency = Math.floor(Math.min(5, Math.max(1, params.max_concurrency ?? 3)));
-      onUpdate?.({ content: [{ type: "text", text: `Fetching ${tasks.length} pages with concurrency ${concurrency}...` }], details: {} });
-
       const results = await mapWithConcurrencyLimit(
         tasks,
         concurrency,
         (task, index) => {
-          onUpdate?.({ content: [{ type: "text", text: `Fetching ${task.url} (${index + 1}/${tasks.length})...` }], details: {} });
-          return fetchOne(task, params.selector, params.stealthy ?? false, signal);
+          return fetchOne(task, params.selector, params.stealthy ?? false, signal).then((res) => {
+            progressItems[index].status = res.ok ? "done" : "error";
+            progressItems[index].size = res.size;
+            progressItems[index].error = res.error || "";
+            sendProgress();
+            return res;
+          });
         },
       );
 
@@ -163,27 +197,24 @@ const webBatchFetchTool = defineTool({
       }
 
       const rawText = lines.join("\n");
-      const truncation = truncateHead(rawText, {
-        maxLines: DEFAULT_MAX_LINES,
-        maxBytes: DEFAULT_MAX_BYTES,
+      const sink = await writeWithFallback(rawText, {
+        tmpPrefix: "pi-web-batch-",
       });
+      fullOutputPath = sink.fullOutputPath;
 
-      let finalText = truncation.content;
-      if (truncation.truncated) {
-        const fullOutputDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-web-batch-"));
-        fullOutputPath = path.join(fullOutputDir, "output.txt");
-        await fs.promises.writeFile(fullOutputPath, rawText, "utf-8");
-        finalText += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}). Full output saved to: ${fullOutputPath}]`;
-      }
-
-      onUpdate?.({ content: [{ type: "text", text: `Batch complete: ${successCount}/${results.length} succeeded` }], details: {} });
       return {
-        content: [{ type: "text", text: finalText }],
+        content: [{ type: "text", text: sink.text }],
         details: {
           urls: params.urls,
           succeeded: successCount,
           failed: results.length - successCount,
-          results: results.map((r) => ({ url: r.url, ok: r.ok, size: r.size })),
+          results: results.map((r) => ({
+            url: r.url,
+            ok: r.ok,
+            size: r.size,
+            preview: r.ok ? extractPreview(r.content, 200) : undefined,
+            error: r.error,
+          })),
           fullOutputPath,
         },
       };
@@ -203,40 +234,120 @@ const webBatchFetchTool = defineTool({
   renderCall(args, theme) {
     let text = theme.fg("toolTitle", theme.bold("web_batch_fetch "));
     text += theme.fg("muted", `${args.urls?.length ?? 0} URLs`);
+    if (args.max_concurrency) {
+      text += theme.fg("dim", ` concurrency=${args.max_concurrency}`);
+    }
     if (args.selector) {
       text += theme.fg("dim", ` selector=${args.selector}`);
     }
     return new Text(text, 0, 0);
   },
 
-  renderResult(result, { expanded, isPartial }, theme) {
+  renderResult(result, { expanded, isPartial }, theme, context) {
+    const isError = context?.isError ?? false;
+
     if (isPartial) {
+      const progress = (result.details as any)?.progress;
+      if (progress) {
+        const { total, completed, succeeded, failed, items } = progress;
+        const barWidth = 15;
+        const filled = Math.round((completed / total) * barWidth);
+        const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+        let text = `${theme.fg("warning", "Batch fetching")}  [${theme.fg("accent", bar.slice(0, filled))}${theme.fg("dim", bar.slice(filled))}]  ${theme.fg("muted", `${completed}/${total}`)}`;
+        if (failed > 0) {
+          text += ` ${theme.fg("error", `(${failed} failed)`)}`;
+        }
+        for (const item of items) {
+          const icon = item.status === "done"
+            ? theme.fg("success", "✓")
+            : item.status === "error"
+              ? theme.fg("error", "✗")
+              : theme.fg("warning", "⏳");
+          let line = `\n  ${icon} ${theme.fg("dim", abbreviateUrl(item.url, 50))}`;
+          if (item.status === "done" && item.size > 0) {
+            line += theme.fg("muted", ` ${formatSize(item.size)}`);
+          } else if (item.status === "error" && item.error) {
+            const err = item.error.slice(0, 80);
+            line += theme.fg("dim", ` ${err}${item.error.length > 80 ? "..." : ""}`);
+          } else if (item.status === "fetching") {
+            line += theme.fg("muted", " fetching...");
+          }
+          text += line;
+        }
+        return new Text(text, 0, 0);
+      }
       return new Text(theme.fg("warning", "Batch fetching..."), 0, 0);
     }
+
     const details = result.details as {
       succeeded?: number;
       failed?: number;
       urls?: string[];
-      results?: Array<{ url: string; ok: boolean; size?: number }>;
+      results?: Array<{ url: string; ok: boolean; size?: number; preview?: string; error?: string }>;
       fullOutputPath?: string;
     } | undefined;
+
+    if (isError) {
+      const errText = getErrorText(result);
+      let text = theme.fg("error", "✗ Batch failed");
+      if (details?.urls) {
+        text += `  ${theme.fg("dim", `${details.urls.length} URLs`)}`;
+      }
+      text += `\n\n  ${theme.fg("toolOutput", errText)}`;
+      return new Text(text, 0, 0);
+    }
+
     const total = details?.urls?.length ?? 0;
     const ok = details?.succeeded ?? 0;
+    const failed = details?.failed ?? 0;
+
     let text = theme.fg("success", `✓ ${ok}/${total} fetched`);
-    if (details?.failed) {
-      text += theme.fg("error", ` (${details.failed} failed)`);
+    if (failed > 0) {
+      text += theme.fg("error", ` (${failed} failed)`);
     }
-    if (expanded && details?.results) {
-      for (const r of details.results) {
-        text += `\n  ${r.ok ? theme.fg("success", "✓") : theme.fg("error", "✗")} ${theme.fg("dim", r.url)}`;
-        if (r.size) {
-          text += theme.fg("muted", ` ${formatSize(r.size)}`);
+
+    if (!expanded) {
+      const successes = (details?.results ?? []).filter((r) => r.ok);
+      const top3 = successes.slice(0, 3);
+      for (let i = 0; i < top3.length; i++) {
+        const r = top3[i];
+        text += `\n  [${i + 1}] ${theme.fg("toolTitle", abbreviateUrl(r.url, 40))} ${theme.fg("muted", `(${formatSize(r.size ?? 0)})`)}`;
+        if (r.preview) {
+          const snippet = normalizeWhitespace(r.preview);
+          const short = snippet.length > 80 ? snippet.slice(0, 80).replace(/\s+\S*$/, "") + "..." : snippet;
+          text += `\n    ${theme.fg("muted", short)}`;
         }
       }
+      if (successes.length > 3) {
+        text += `\n  ${theme.fg("muted", `... and ${successes.length - 3} more (Ctrl+O for full list)`)}`;
+      }
     }
-    if (expanded && details?.fullOutputPath) {
-      text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
+
+    if (expanded && details?.results) {
+      const successes = details.results.filter((r) => r.ok);
+      const failures = details.results.filter((r) => !r.ok);
+
+      for (let i = 0; i < successes.length; i++) {
+        const r = successes[i];
+        text += `\n[${i + 1}] ${theme.fg("toolTitle", abbreviateUrl(r.url))} ${theme.fg("muted", `| ${formatSize(r.size ?? 0)}`)}`;
+        if (r.preview) {
+          text += `\n    ${theme.fg("muted", normalizeWhitespace(r.preview))}`;
+        }
+        text += "\n";
+      }
+
+      if (failures.length > 0) {
+        text += `\n${theme.fg("error", "Failed:")}`;
+        for (const r of failures) {
+          text += `\n  ${theme.fg("error", "✗")} ${theme.fg("dim", r.url)} ${theme.fg("dim", r.error ?? "")}`;
+        }
+      }
+
+      if (details?.fullOutputPath) {
+        text += `\n\n${theme.fg("accent", `Full output: ${details.fullOutputPath}`)}`;
+      }
     }
+
     return new Text(text, 0, 0);
   },
 });

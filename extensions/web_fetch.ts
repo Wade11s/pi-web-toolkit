@@ -13,7 +13,6 @@
 import {
   defineTool,
   type ExtensionAPI,
-  truncateHead,
   formatSize,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -24,6 +23,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { runScraplingWithFallback } from "./utils/scrapling";
+import { extractPreview } from "./utils/content-preview";
+import { writeWithFallback } from "./utils/output-sink";
+import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
 
 export const WebFetchParamsSchema = Type.Object({
   url: Type.String({ description: "Full URL to fetch (e.g. https://example.com/article)" }),
@@ -45,9 +47,11 @@ const webFetchTool = defineTool({
   ].join(" "),
   promptSnippet: "Fetch full page content from a URL as markdown",
   promptGuidelines: [
-    "Use web_fetch after web_search to read full articles, docs, or pages found in search results.",
-    "Always pass the full URL including https://.",
+    "Use web_fetch to read a single static page (article, doc, or blog) when given a specific URL.",
+    "For a single URL, always use web_fetch instead of web_batch_fetch.",
     "If the page is dynamic/JavaScript-heavy, the tool automatically uses browser automation.",
+    "When reading multiple (2–5) pages at once (e.g., after web_search), prefer web_batch_fetch over repeated web_fetch calls.",
+    "Always pass the full URL including https://.",
   ],
   parameters: WebFetchParamsSchema,
 
@@ -71,23 +75,23 @@ const webFetchTool = defineTool({
       const content = await fs.promises.readFile(tmpFile, "utf-8");
       const stats = await fs.promises.stat(tmpFile);
 
+      const preview = extractPreview(content, 500);
       const rawText = `Fetched: ${params.url}\nSize: ${stats.size} bytes\n\n---\n\n${content}`;
-      const truncation = truncateHead(rawText, {
-        maxLines: DEFAULT_MAX_LINES,
-        maxBytes: DEFAULT_MAX_BYTES,
+      const sink = await writeWithFallback(rawText, {
+        tmpPrefix: "pi-web-fetch-full-",
       });
-
-      let finalText = truncation.content;
-      if (truncation.truncated) {
-        const tmpFullDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-web-fetch-full-"));
-        tmpFull = path.join(tmpFullDir, "output.txt");
-        await fs.promises.writeFile(tmpFull, rawText, "utf-8");
-        finalText += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}). Full output saved to: ${tmpFull}]`;
-      }
+      tmpFull = sink.fullOutputPath;
 
       return {
-        content: [{ type: "text", text: finalText }],
-        details: { url: params.url, bytes: stats.size, fullOutputPath: tmpFull },
+        content: [{ type: "text", text: sink.text }],
+        details: {
+          url: params.url,
+          bytes: stats.size,
+          fullOutputPath: tmpFull,
+          preview,
+          selector: params.selector,
+          stealthy: params.stealthy,
+        },
       };
     } catch (err: any) {
       throw new Error(`Error fetching ${params.url}: ${err.message ?? err}`);
@@ -99,27 +103,73 @@ const webFetchTool = defineTool({
   renderCall(args, theme) {
     let text = theme.fg("toolTitle", theme.bold("web_fetch "));
     text += theme.fg("muted", args.url);
+    if (args.stealthy) {
+      text += theme.fg("dim", " [stealthy]");
+    }
     if (args.selector) {
-      text += theme.fg("dim", ` selector=${args.selector}`);
+      text += theme.fg("dim", ` [selector=${args.selector}]`);
     }
     return new Text(text, 0, 0);
   },
 
-  renderResult(result, { expanded, isPartial }, theme) {
+  renderResult(result, { expanded, isPartial }, theme, context) {
+    const isError = context?.isError ?? false;
+
     if (isPartial) {
-      return new Text(theme.fg("warning", "Fetching..."), 0, 0);
+      const url = (result.details as any)?.url as string | undefined;
+      const domain = url ? getDomain(url) : "";
+      const label = domain ? `Fetching ${domain}...` : "Fetching...";
+      return new Text(theme.fg("warning", label), 0, 0);
     }
-    const details = result.details as { url?: string; bytes?: number; fullOutputPath?: string } | undefined;
+    const details = result.details as {
+      url?: string;
+      bytes?: number;
+      fullOutputPath?: string;
+      preview?: string;
+      selector?: string;
+      stealthy?: boolean;
+    } | undefined;
+
+    if (isError) {
+      const errText = getErrorText(result);
+      let text = theme.fg("error", "✗ Fetch failed");
+      if (details?.url) text += `  ${theme.fg("dim", abbreviateUrl(details.url))}`;
+      text += `\n\n  ${theme.fg("toolOutput", errText)}`;
+      return new Text(text, 0, 0);
+    }
+
     let text = theme.fg("success", "✓ Fetched");
-    if (details?.bytes) {
-      text += theme.fg("muted", ` (${formatSize(details.bytes)})`);
+    if (details?.url) {
+      text += `  ${theme.fg("dim", abbreviateUrl(details.url))}`;
     }
+    if (details?.bytes && details?.preview) {
+      text += `  ${theme.fg("muted", formatExtraction(details.bytes, details.preview.length))}`;
+    }
+
+    if (details?.selector) {
+      text += `\n  ${theme.fg("dim", `[selector=${details.selector}]`)}`;
+    }
+    if (details?.stealthy) {
+      text += `${details?.selector ? "" : "\n  "}${theme.fg("dim", "[stealthy]")}`;
+    }
+
+    if (!expanded && details?.preview) {
+      const snippet = normalizeWhitespace(details.preview);
+      const short = snippet.length > 160
+        ? snippet.slice(0, 160).replace(/\s+\S*$/, "") + "..."
+        : snippet;
+      text += `\n\n  ${theme.fg("muted", short)}`;
+    }
+
     if (expanded) {
-      text += `\n${theme.fg("dim", details?.url ?? "")}`;
+      if (details?.preview) {
+        text += `\n\n  ${theme.fg("muted", normalizeWhitespace(details.preview))}`;
+      }
       if (details?.fullOutputPath) {
-        text += `\n${theme.fg("dim", `Full output: ${details.fullOutputPath}`)}`;
+        text += `\n\n${theme.fg("accent", `Full output: ${details.fullOutputPath}`)}`;
       }
     }
+
     return new Text(text, 0, 0);
   },
 });

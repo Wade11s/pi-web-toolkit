@@ -1,6 +1,6 @@
 {
   "name": "pi-web-toolkit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch static pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel.",
   "author": "Wade Huang <fastwade11@gmail.com>",
   "license": "MIT",
@@ -16,6 +16,11 @@
   "files": ["extensions", "docs", "README.md", "package.json", "LICENSE"],
   "engines": {
     "node": ">=22.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npx tsx test/content-preview/test.ts",
+    "test:approve": "npx tsx test/content-preview/test.ts --approve"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

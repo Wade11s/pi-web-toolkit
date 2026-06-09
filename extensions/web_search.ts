@@ -13,16 +13,14 @@
 import {
   defineTool,
   type ExtensionAPI,
-  truncateHead,
   formatSize,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
+import { writeWithFallback } from "./utils/output-sink";
+import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 
 
@@ -42,7 +40,7 @@ interface SearxResponse {
 
 export const WebSearchParamsSchema = Type.Object({
   query: Type.String({ description: "Search query" }),
-  language: Type.Optional(Type.String({ description: "Language code (e.g. en, en-US, de). Default: auto", default: "auto" })),
+  language: Type.Optional(Type.String({ description: "Language code (e.g. en, en-US, de). Omit to use SearXNG default.", default: "" })),
   results: Type.Optional(Type.Integer({ description: "Max number of results to return (1-60). Default: 20 (one page). Automatically pages through SearXNG (up to 3 pages) if needed.", minimum: 1, maximum: 60, default: 20 })),
 });
 
@@ -64,13 +62,14 @@ const webSearchTool = defineTool({
     "Use web_search when the user asks about recent events, current data, or external facts.",
     "Use web_search to verify claims, find documentation, or discover resources online.",
     "If web_search returns no results but includes suggestions, consider using a suggested query to refine your search.",
+    "If web_search returns multiple (2–5) relevant results that all need to be read, prefer web_batch_fetch to fetch them in parallel instead of calling web_fetch repeatedly.",
   ],
   parameters: WebSearchParamsSchema,
 
   async execute(_toolCallId, params, signal) {
     const searxngUrl = (process.env.SEARXNG_URL || "http://localhost:8080").replace(/\/$/, "");
     const maxResults = Math.floor(Math.min(60, Math.max(1, params.results ?? 20)));
-    const language = params.language ?? "auto";
+    const language = params.language ?? "";
 
     const allResults: SearxResult[] = [];
     const seenUrls = new Set<string>();
@@ -84,9 +83,9 @@ const webSearchTool = defineTool({
         const searchParams = new URLSearchParams({
           q: params.query,
           format: "json",
-          language,
           pageno: String(page),
         });
+        if (language) searchParams.set("language", language);
 
         const response = await fetch(`${searxngUrl}/search?${searchParams.toString()}`, {
           method: "GET",
@@ -153,23 +152,14 @@ const webSearchTool = defineTool({
       }
 
       const rawText = lines.join("\n");
-      const truncation = truncateHead(rawText, {
-        maxLines: DEFAULT_MAX_LINES,
-        maxBytes: DEFAULT_MAX_BYTES,
+      const sink = await writeWithFallback(rawText, {
+        tmpPrefix: "pi-web-search-",
+        alwaysWriteFile: true,
       });
-
-      // Always write full output to a temp file so renderResult can reference it
-      const tmpDir = await mkdtemp(path.join(os.tmpdir(), "pi-web-search-"));
-      fullOutputPath = path.join(tmpDir, "output.txt");
-      await writeFile(fullOutputPath, rawText, "utf-8");
-
-      let finalText = truncation.content;
-      if (truncation.truncated) {
-        finalText += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}). Full output saved to: ${fullOutputPath}]`;
-      }
+      fullOutputPath = sink.fullOutputPath;
 
       return {
-        content: [{ type: "text", text: finalText }],
+        content: [{ type: "text", text: sink.text }],
         details: { query: finalQuery, totalResults: allResults.length, results: allResults.slice(0, maxResults), fullOutputPath },
       };
     } catch (err: any) {
@@ -186,16 +176,31 @@ const webSearchTool = defineTool({
     return new Text(text, 0, 0);
   },
 
-  renderResult(result, { expanded, isPartial }, theme) {
+  renderResult(result, { expanded, isPartial }, theme, context) {
+    const isError = context?.isError ?? false;
+
     if (isPartial) {
-      return new Text(theme.fg("warning", "Searching..."), 0, 0);
+      const query = (result.details as any)?.query as string | undefined;
+      const label = query ? `Searching "${query}"...` : "Searching...";
+      return new Text(theme.fg("warning", label), 0, 0);
     }
+
     const details = result.details as {
       query?: string;
       totalResults?: number;
       results?: Array<{ title?: string; url?: string; score?: number; engine?: string; content?: string }>;
       fullOutputPath?: string;
     } | undefined;
+
+    if (isError) {
+      const errText = getErrorText(result);
+      const query = details?.query;
+      let text = theme.fg("error", "✗ Search failed");
+      if (query) text += `  ${theme.fg("dim", query)}`;
+      text += `\n\n  ${theme.fg("toolOutput", errText)}`;
+      return new Text(text, 0, 0);
+    }
+
     if (!details) {
       return new Text(theme.fg("error", "No result details"), 0, 0);
     }
@@ -207,13 +212,17 @@ const webSearchTool = defineTool({
     }
 
     if (!expanded && showing > 0) {
-      // Default: top 3 compact — Title [engine]
-      const top3 = [...(details.results ?? [])]
-        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-        .slice(0, 3);
-      for (const r of top3) {
-        const engineTag = r.engine ? theme.fg("dim", ` [${r.engine}]`) : "";
-        text += `\n  ${theme.fg("toolTitle", r.title ?? "(untitled)")}${engineTag}`;
+      // Default: top 3 compact — [i] Title + domain + snippet
+      const top3 = (details.results ?? []).slice(0, 3);
+      for (let i = 0; i < top3.length; i++) {
+        const r = top3[i];
+        const domain = r.url ? theme.fg("dim", `  ${getDomain(r.url)}`) : "";
+        text += `\n  [${i + 1}] ${theme.fg("toolTitle", r.title ?? "(untitled)")}${domain}`;
+        if (r.content) {
+          const snippet = normalizeWhitespace(r.content);
+          const short = snippet.length > 90 ? snippet.slice(0, 90).replace(/\s+\S*$/, "") + "..." : snippet;
+          text += `\n    ${theme.fg("muted", short)}`;
+        }
       }
       if (showing > 3) {
         text += `\n  ${theme.fg("muted", `... and ${showing - 3} more (Ctrl+O for full list)`)}`;
@@ -221,24 +230,16 @@ const webSearchTool = defineTool({
     }
 
     if (expanded && details?.results?.length) {
-      // Expanded (Ctrl+O): top 10 cards — L1 title|engine|score, L2 URL, L3 snippet
-      const top10 = [...details.results]
-        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-        .slice(0, 10);
-      for (const r of top10) {
+      // Expanded (Ctrl+O): top 10 cards — [i] Title|engine|score, URL, snippet
+      const top10 = (details.results ?? []).slice(0, 10);
+      for (let i = 0; i < top10.length; i++) {
+        const r = top10[i];
         const scoreStr = r.score !== undefined ? r.score.toFixed(2) : "—";
         const metaStr = r.engine ? ` | ${r.engine} | ${scoreStr}` : ` | ${scoreStr}`;
-        // L1: title + meta
-        text += `\n  ${theme.fg("toolTitle", r.title ?? "(untitled)")}${theme.fg("dim", metaStr)}`;
-        // L2: full URL
-        text += `\n    ${theme.fg("dim", r.url ?? "")}`;
-        // L3: snippet preview
+        text += `\n  [${i + 1}] ${theme.fg("toolTitle", r.title ?? "(untitled)")}${theme.fg("dim", metaStr)}`;
+        text += `\n    ${theme.fg("dim", abbreviateUrl(r.url ?? ""))}`;
         if (r.content) {
-          const snippet = r.content.replace(/\s+/g, " ").trim();
-          const truncated = snippet.length > 120
-            ? snippet.slice(0, 120).replace(/\s+\S*$/, "") + "..."
-            : snippet;
-          text += `\n    ${theme.fg("muted", truncated)}`;
+          text += `\n    ${theme.fg("muted", normalizeWhitespace(r.content))}`;
         }
         text += "\n";
       }
@@ -258,3 +259,5 @@ const webSearchTool = defineTool({
 export default function (pi: ExtensionAPI) {
   pi.registerTool(webSearchTool);
 }
+
+
