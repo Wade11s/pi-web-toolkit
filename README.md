@@ -18,6 +18,28 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 | **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 2–15 pages in parallel for research synthesis | 3 concurrent (max 5) |
 | **`web_browse`** | [agent-browser](https://github.com/vercel-labs/agent-browser) | Interact with a page (click, scroll, fill) then extract content | 25 actions |
 
+## Tools Preview
+
+A quick look at how pi renders toolkit calls while an agent searches, fetches, batches, and browses the web.
+
+<table>
+  <tr>
+    <td width="50%"><strong>Multi-tool research flow</strong><br><img src="docs/assets/screenshots/tools-workflow-preview.png" alt="pi-web-toolkit multi-tool research preview"></td>
+    <td width="50%"><strong><code>web_search</code> expanded results</strong><br><img src="docs/assets/screenshots/web-search-results-expanded.png" alt="web_search expanded results"></td>
+  </tr>
+  <tr>
+    <td width="50%"><strong><code>web_batch_fetch</code> progress</strong><br><img src="docs/assets/screenshots/web-batch-fetch-progress.png" alt="web_batch_fetch progress"></td>
+    <td width="50%"><strong><code>web_batch_fetch</code> results</strong><br><img src="docs/assets/screenshots/web-batch-fetch-results.png" alt="web_batch_fetch results"></td>
+  </tr>
+  <tr>
+    <td width="50%"><strong><code>web_fetch</code> result preview</strong><br><img src="docs/assets/screenshots/web-fetch-summary.png" alt="web_fetch result preview"></td>
+    <td width="50%"><strong><code>web_browse</code> headless browser flow</strong><br><img src="docs/assets/screenshots/web-browse-headless.png" alt="web_browse headless browser flow"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><strong>End-to-end research summary</strong><br><img src="docs/assets/screenshots/web-research-workflow.png" alt="end-to-end web research workflow"></td>
+  </tr>
+</table>
+
 ## Quick Start
 
 ### 1. Install external dependencies

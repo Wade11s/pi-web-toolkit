@@ -25,6 +25,48 @@ export interface AgentBrowserBatchItem {
   error?: string | null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBatchItem(value: unknown): value is AgentBrowserBatchItem {
+  return isRecord(value)
+    && typeof value.success === "boolean"
+    && Array.isArray(value.command)
+    && value.command.every((part) => typeof part === "string");
+}
+
+function describeBatchOutput(value: unknown): string {
+  if (Array.isArray(value)) return `array with ${value.length} item(s)`;
+  if (isRecord(value)) return `object with keys: ${Object.keys(value).join(", ") || "(none)"}`;
+  return typeof value;
+}
+
+export function parseAgentBrowserBatchOutput(stdout: string): AgentBrowserBatchItem[] {
+  const parsed = JSON.parse(stdout) as unknown;
+
+  if (Array.isArray(parsed)) {
+    if (parsed.every(isBatchItem)) return parsed;
+    throw new Error(`Expected every batch result item to contain { success, command }; got ${describeBatchOutput(parsed)}`);
+  }
+
+  if (isBatchItem(parsed)) {
+    return [parsed];
+  }
+
+  if (isRecord(parsed)) {
+    for (const key of ["results", "items", "data", "commands"]) {
+      const candidate = parsed[key];
+      if (Array.isArray(candidate)) {
+        if (candidate.every(isBatchItem)) return candidate;
+        throw new Error(`Expected ${key} to contain batch result items; got ${describeBatchOutput(candidate)}`);
+      }
+    }
+  }
+
+  throw new Error(`Expected JSON array of batch results; got ${describeBatchOutput(parsed)}`);
+}
+
 function requireString(action: BrowseAction, field: "selector" | "value" | "key"): string {
   const value = action[field] as string | undefined;
   if (typeof value !== "string" || value.length === 0) {
@@ -150,7 +192,7 @@ export async function runAgentBrowserBatch(
     }
 
     try {
-      return JSON.parse(result.stdout) as AgentBrowserBatchItem[];
+      return parseAgentBrowserBatchOutput(result.stdout);
     } catch (err: any) {
       throw new Error(
         `Failed to parse agent-browser output: ${err.message}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-10
+
+### Added
+
+- README tools preview grid with screenshots for `web_search`, `web_fetch`, `web_batch_fetch`, and `web_browse`.
+- Agent-browser parser regression tests covering array, wrapped, single-item, and invalid JSON output shapes.
+
+### Fixed
+
+- `web_browse` now accepts multiple agent-browser batch JSON output shapes instead of assuming a top-level array.
+
+### Changed
+
+- `npm test` now also runs the agent-browser parser regression suite.
+
 ## [0.2.0] - 2026-06-09
 
 ### Added
@@ -82,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `web_browse` — interactive browser automation via agent-browser.
 - LLM-optimized `promptGuidelines` and `promptSnippet` for every tool.
 
-[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.0...v0.1.1
