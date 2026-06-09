@@ -78,12 +78,19 @@ pi-web-toolkit/
 ├── extensions/
 │   ├── index.ts              # Unified entry point — registers all 4 tools
 │   ├── utils/
+│   │   ├── cli-runner.ts     # Unified CLI process spawning with timeout/AbortSignal
+│   │   ├── content-preview.ts # Intelligent content extraction from scraped pages
+│   │   ├── output-sink.ts    # Truncation + temp-file fallback
+│   │   ├── render-helpers.ts # URL abbreviations, text normalization, error formatting for TUI
 │   │   ├── scrapling.ts      # Reusable scrapling CLI wrapper (shared by fetch + batch)
+│   │   ├── tool-factory.ts   # Common tool registration patterns
 │   │   └── agent-browser.ts  # agent-browser CLI wrapper (shared by web_browse)
 │   ├── web_search.ts         # SearXNG search tool
 │   ├── web_fetch.ts          # Single-page scrapling fetcher
 │   ├── web_batch_fetch.ts    # Parallel scrapling fetcher
 │   └── web_browse.ts         # Interactive browser automation (agent-browser)
+├── test/
+│   └── content-preview/      # Automated test suite with fixtures & snapshots
 ├── docs/
 │   ├── tools.md              # Full parameter specs
 │   └── guide.md              # Decision tree & tool comparison
@@ -95,7 +102,7 @@ pi-web-toolkit/
 
 **Design principles:**
 - **Unified registration** — `index.ts` is the single source of truth for what pi loads.
-- **Shared utilities** — `utils/scrapling.ts` and `utils/agent-browser.ts` encapsulate the CLI wrappers and fallback logic; tool files import only from `utils/`, never from each other.
+- **Shared utilities** — `utils/` modules encapsulate CLI spawning, content extraction, output truncation, TUI formatting, and common registration patterns; tool files import only from `utils/`, never from each other.
 - **Per-tool isolation** — each tool owns its own schema, execute logic, and TUI renderer; no cross-imports except via `utils/`.
 - **Runtime config** — environment variables are read at execute time, not build time.
 
@@ -112,7 +119,10 @@ pi-web-toolkit/
 pi install ./
 
 # Type-check (no build step; pi loads TypeScript directly)
-npx tsc --noEmit
+npm run typecheck
+
+# Run tests
+npm run test
 
 # Verify external CLI dependencies
 scrapling --help
