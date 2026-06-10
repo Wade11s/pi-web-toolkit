@@ -1,7 +1,7 @@
 {
   "name": "pi-web-toolkit",
-  "version": "0.2.1",
-  "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch static pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel.",
+  "version": "0.2.2",
+  "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel.",
   "author": "Wade Huang <fastwade11@gmail.com>",
   "license": "MIT",
   "repository": {
@@ -13,17 +13,18 @@
   },
   "homepage": "https://github.com/Wade11s/pi-web-toolkit#readme",
   "keywords": ["pi-package", "pi-extension", "web-search", "scrapling", "agent-browser"],
-  "files": ["extensions", "docs", "README.md", "package.json", "LICENSE"],
+  "files": ["extensions", "docs", "README.md", "CHANGELOG.md", "package.json", "LICENSE"],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx test/content-preview/test.ts && npx tsx test/agent-browser/test.ts",
-    "test:agent-browser": "npx tsx test/agent-browser/test.ts",
-    "test:approve": "npx tsx test/content-preview/test.ts --approve"
+    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts",
+    "test:agent-browser": "tsx test/agent-browser/test.ts",
+    "test:approve": "tsx test/content-preview/test.ts --approve"
   },
   "devDependencies": {
+    "tsx": "^4.22.4",
     "typescript": "^5.7.0"
   },
   "peerDependencies": {

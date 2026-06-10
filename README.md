@@ -1,21 +1,22 @@
 # pi-web-toolkit
 
 [![npm version](https://badge.fury.io/js/pi-web-toolkit.svg)](https://www.npmjs.com/package/pi-web-toolkit)
+[![Pi package](https://img.shields.io/badge/Pi-package-111111.svg)](https://pi.dev/packages/pi-web-toolkit)
 [![CI](https://github.com/Wade11s/pi-web-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/Wade11s/pi-web-toolkit/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933)
 
-**100% open-source. Zero API keys. Zero fees.**
+**100% open-source. No required API keys or paid services.**
 
-Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch static pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel. All self-hosted, all local, all free — with built-in truncation safety and LLM-optimized prompt guidelines.
+Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel. All backends run locally or are self-hosted, with built-in truncation safety and LLM-optimized prompt guidelines.
 
 ## Features
 
 | Tool | Backend | Purpose | Current Limit |
 |------|---------|---------|---------------|
-| **`web_search`** | [SearXNG](https://github.com/searxng/searxng) | Search the web with scored, ranked results from multiple engines — always the first step in web research | 20 results (max 60, auto-pages up to 3 pages) |
-| **`web_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch a single static page as clean markdown | — |
-| **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 2–15 pages in parallel for research synthesis | 3 concurrent (max 5) |
+| **`web_search`** | [SearXNG](https://github.com/searxng/searxng) | Discover scored, ranked results from multiple engines | 20 results (max 60, auto-pages up to 3 pages) |
+| **`web_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch a single page as clean markdown | — |
+| **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 1–15 pages in parallel for research synthesis (2–5 recommended) | 3 concurrent (max 5) |
 | **`web_browse`** | [agent-browser](https://github.com/vercel-labs/agent-browser) | Interact with a page (click, scroll, fill) then extract content | 25 actions |
 
 ## Tools Preview
@@ -40,14 +41,98 @@ A quick look at how pi renders toolkit calls while an agent searches, fetches, b
   </tr>
 </table>
 
+## Install with Pi Agent
+
+Copy and send the prompt below to Pi. It will install this package and its external dependencies for you.
+
+```text
+Install pi-web-toolkit and its external dependencies. Complete and verify every
+step yourself; do not rely on web browsing or external documentation. Inspect
+the machine first and reuse working installations. Ask before using sudo,
+changing shell profiles, overwriting configuration, or modifying existing
+services or containers.
+
+1. Ensure Node.js 22+, npm, Docker, OpenSSL, curl, uv, and Pi are installed, and
+   that Docker is running. Install only missing or incompatible prerequisites.
+2. Configure SearXNG:
+   - Test SEARXNG_URL when set, then http://localhost:8080.
+   - Verify /search?q=test&format=json returns JSON with a results array.
+   - If neither endpoint works, first ensure no existing container or config
+     would be overwritten, then create a local-only instance by running:
+
+mkdir -p "$HOME/.config/searxng"
+cat > "$HOME/.config/searxng/settings.yml" <<'YAML'
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+YAML
+
+docker run -d \
+  --name searxng \
+  --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -e FORCE_OWNERSHIP=false \
+  -e SEARXNG_SECRET="$(openssl rand -hex 32)" \
+  -v "$HOME/.config/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+  docker.io/searxng/searxng:latest
+
+   - Verify the selected endpoint by running:
+
+SEARXNG_ENDPOINT="${SEARXNG_URL:-http://localhost:8080}"
+curl -fsS --get "${SEARXNG_ENDPOINT%/}/search" \
+  --data-urlencode "q=test" \
+  --data "format=json" |
+  grep -q '"results"' && echo "SearXNG JSON API ready"
+
+   - Pi uses http://localhost:8080 by default. Set SEARXNG_URL before starting
+     Pi only when using another endpoint.
+3. Install and verify Scrapling:
+   uv tool install "scrapling[all]"
+   scrapling install
+   scrapling --help
+4. Install and verify agent-browser:
+   npm install -g agent-browser
+   agent-browser install
+   agent-browser doctor
+   On Linux, use agent-browser install --with-deps if required.
+5. After all dependencies pass verification, install the package:
+   pi install npm:pi-web-toolkit
+
+Report what was installed or reused, all verification results, the SearXNG
+endpoint Pi will use, and whether Pi must be restarted. Do not report success
+until every check passes.
+```
+
 ## Quick Start
 
 ### 1. Install external dependencies
 
+The commands below assume a POSIX shell with Docker, OpenSSL, curl, uv, and Node.js 22+ with npm.
+
 ```bash
-# SearXNG (for search)
-docker run -d --name searxng -p 8080:8080 -v searxng:/etc/searxng searxng/searxng
-export SEARXNG_URL="http://localhost:8080"
+# SearXNG (for search; local-only instance with the required JSON API)
+mkdir -p "$HOME/.config/searxng"
+cat > "$HOME/.config/searxng/settings.yml" <<'YAML'
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+YAML
+
+docker run -d \
+  --name searxng \
+  --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -e FORCE_OWNERSHIP=false \
+  -e SEARXNG_SECRET="$(openssl rand -hex 32)" \
+  -v "$HOME/.config/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+  docker.io/searxng/searxng:latest
+export SEARXNG_URL="http://127.0.0.1:8080"
 
 # scrapling (for fetch & batch fetch)
 uv tool install "scrapling[all]"
@@ -55,12 +140,16 @@ scrapling install
 
 # agent-browser (for browse)
 npm i -g agent-browser && agent-browser install
+# On Linux hosts missing browser system libraries: agent-browser install --with-deps
 ```
 
 **Verify dependencies:**
 ```bash
 # SearXNG
-curl -s "$SEARXNG_URL" | head
+curl -fsS --get "$SEARXNG_URL/search" \
+  --data-urlencode "q=searxng" \
+  --data "format=json" |
+  grep -q '"results"' && echo "SearXNG JSON API ready"
 
 # scrapling
 scrapling --help
@@ -81,7 +170,7 @@ pi install git:github.com/Wade11s/pi-web-toolkit
 
 ## Configuration
 
-All tools are configured via **environment variables** at runtime — no rebuild or restart required.
+`web_search` reads its SearXNG endpoint from an environment variable. Set it before starting pi; no build step is required.
 
 | Variable | Default | Used By | Description |
 |----------|---------|---------|-------------|
@@ -112,13 +201,19 @@ pi-web-toolkit/
 │   ├── web_batch_fetch.ts    # Parallel scrapling fetcher
 │   └── web_browse.ts         # Interactive browser automation (agent-browser)
 ├── test/
-│   └── content-preview/      # Automated test suite with fixtures & snapshots
+│   ├── agent-browser/        # agent-browser output parser regression tests
+│   ├── content-preview/      # Content preview fixtures, baselines & snapshots
+│   └── README.md             # Test suite structure and conventions
 ├── docs/
 │   ├── tools.md              # Full parameter specs
-│   └── guide.md              # Decision tree & tool comparison
+│   ├── guide.md              # Decision tree & tool comparison
+│   └── agents/               # Issue tracker, triage and domain guidance
+├── AGENTS.md
+├── CONTEXT.md
 ├── CHANGELOG.md
 ├── package.json
 ├── README.md
+├── tsconfig.json
 └── LICENSE
 ```
 

@@ -109,8 +109,7 @@ const webBatchFetchTool = defineTool({
   label: "Web Batch Fetch",
   description: [
     "Fetch multiple web pages in parallel and return their content aggregated.",
-    "Use web_batch_fetch AFTER web_search when there are 2–5 relevant results",
-    "that the agent wants to read simultaneously for comparison or synthesis.",
+    "Use web_batch_fetch for 2–5 relevant URLs, whether discovered by search or provided by the user.",
     "For a single page, use web_fetch instead.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),

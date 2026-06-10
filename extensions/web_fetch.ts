@@ -41,13 +41,13 @@ const webFetchTool = defineTool({
   description: [
     "Fetch and extract readable content from a web page URL.",
     "Uses scrapling to download the page and convert it to clean markdown.",
-    "Use web_fetch AFTER web_search to read the full content of a result page.",
-    "Respects robots.txt and site ToS.",
+    "Use web_fetch to read the full content of a specific result or user-provided URL.",
+    "Callers remain responsible for robots.txt and site terms; Scrapling extract commands do not enforce them automatically.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
   promptSnippet: "Fetch full page content from a URL as markdown",
   promptGuidelines: [
-    "Use web_fetch to read a single static page (article, doc, or blog) when given a specific URL.",
+    "Use web_fetch to read a single page (article, doc, or blog) that needs no interaction.",
     "For a single URL, always use web_fetch instead of web_batch_fetch.",
     "If the page is dynamic/JavaScript-heavy, the tool automatically uses browser automation.",
     "When reading multiple (2–5) pages at once (e.g., after web_search), prefer web_batch_fetch over repeated web_fetch calls.",

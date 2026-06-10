@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-11
+
+### Added
+
+- Self-contained README prompt that Pi users can copy to install and verify the package, SearXNG, Scrapling, and agent-browser.
+- `CHANGELOG.md` to the files included in the published npm package.
+
+### Changed
+
+- Corrected README, tool reference, usage guide, agent guidance, project context, and test documentation to match current repository behavior.
+- Clarified when to use each tool, Scrapling fallback behavior, external dependency requirements, and SearXNG JSON API setup.
+- Test scripts now use the locally installed `tsx` development dependency.
+- User-visible tool descriptions now distinguish pages that need interaction from those that do not.
+
+### Fixed
+
+- Corrected historical changelog dates and inaccurate claims about robots.txt enforcement, tool limits, runtime configuration, and test coverage.
+- Corrected GitHub issue-reading commands in agent guidance.
+
 ## [0.2.1] - 2026-06-10
 
 ### Added
@@ -26,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `extensions/utils/cli-runner.ts` — unified CLI process spawning with timeout and AbortSignal support.
+- `extensions/utils/cli-runner.ts` — centralized CLI process spawning with timeout and AbortSignal support.
 - `extensions/utils/content-preview.ts` — intelligent content extraction from scraped pages.
 - `extensions/utils/output-sink.ts` — truncation and temp-file fallback, replacing `truncateHead` + manual `writeFile`/`mkdtemp` in every tool.
 - `extensions/utils/render-helpers.ts` — URL abbreviations, text normalization, and error formatting for TUI.
@@ -57,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stop tracking `package-lock.json` (library project; reproducible by downstream consumers).
 - Add `typecheck`, `test`, and `test:approve` scripts to `package.json`.
 
-## [0.1.2] - 2025-06-08
+## [0.1.2] - 2026-06-08
 
 ### Added
 
@@ -67,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `web_search` — `SEARXNG_URL` is now read at execute time instead of module load time, so changes take effect without restarting pi.
+- `web_search` — `SEARXNG_URL` is now read at execute time instead of module load time, so in-process environment changes take effect without reloading the extension.
 - `utils/scrapling.ts` — introduced `runScraplingWithFallback()` with configurable `noGetFallback` option, eliminating duplicate fallback logic in `web_fetch` and `web_batch_fetch`.
 - `web_browse.ts` — reduced from ~400 lines to ~194 lines by moving CLI logic to `utils/agent-browser.ts`.
 - README — added `## Configuration` section, `## Contributing` section, CI badge, and updated project structure with design principles.
@@ -76,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserved GET fallback for `web_batch_fetch` when `stealthy: true` fails, maintaining backward compatibility with the previous batch implementation.
 
-## [0.1.1] - 2025-06-04
+## [0.1.1] - 2026-06-04
 
 ### Added
 
@@ -88,16 +107,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Unified extension entry point at `extensions/index.ts`.
 
-## [0.1.0] - 2025-06-03
+## [0.1.0] - 2026-06-03
 
 ### Added
 
 - `web_search` — SearXNG web search.
-- `web_fetch` — static page extraction via scrapling.
+- `web_fetch` — single-page extraction via scrapling.
 - `web_browse` — interactive browser automation via agent-browser.
 - LLM-optimized `promptGuidelines` and `promptSnippet` for every tool.
 
-[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.1...v0.1.2

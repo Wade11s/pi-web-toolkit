@@ -11,10 +11,18 @@ pi-web-toolkit/
 │   ├── web_browse.ts        # Interactive browser automation via agent-browser
 │   ├── web_batch_fetch.ts   # Parallel multi-page fetching
 │   └── utils/
-│       └── scrapling.ts     # scrapling CLI wrapper
+│       ├── agent-browser.ts # agent-browser command builder and parser
+│       ├── cli-runner.ts    # Shared external CLI process runner
+│       ├── content-preview.ts # Structural preview extraction
+│       ├── output-sink.ts   # Truncation and temp-file fallback
+│       ├── render-helpers.ts # Shared TUI formatting helpers
+│       ├── scrapling.ts     # scrapling CLI wrapper
+│       └── tool-factory.ts  # Shared tool/rendering helpers
 ├── docs/                    # Documentation
 │   ├── tools.md             # Full parameter specs and usage examples
-│   └── guide.md             # Decision tree and tool comparison
+│   ├── guide.md             # Decision tree and tool comparison
+│   └── agents/              # Issue tracker, triage and domain guidance
+├── test/                    # Automated regression tests
 ├── package.json
 ├── README.md
 └── LICENSE
@@ -27,20 +35,24 @@ All tools are registered from `extensions/index.ts`. Each tool lives in its own 
 This is a pi extension package; it is loaded directly by the pi agent runtime and does not require a build step.
 
 ```bash
-# Install peer dependencies locally for type-checking
+# Install local development and peer dependencies
 npm install
 
 # Test the extension in a local pi environment
 pi install ./
 
+# Run automated tests and type-checking
+npm test
+npm run typecheck
+
 # Verify scrapling dependency
-scrapling doctor
+scrapling --help
 
 # Verify agent-browser dependency
 agent-browser doctor
 ```
 
-There is no test suite currently. Manual verification against a running pi instance is the primary validation method.
+The automated suite covers content-preview behavior and agent-browser output parsing. Manual verification against a running pi instance is still required for end-to-end tool behavior.
 
 ## Coding Style & Naming Conventions
 
@@ -56,12 +68,13 @@ There is no test suite currently. Manual verification against a running pi insta
 
 ## Testing Guidelines
 
-There is no automated test suite at this time. When adding or modifying a tool:
+When adding or modifying a tool:
 
-1. Install the extension locally with `pi install ./`
-2. Exercise the tool through the pi agent interface
-3. Verify happy paths and common error cases (timeouts, missing CLI dependencies, network failures)
-4. Ensure output truncation and temp-file fallback behavior works for large results
+1. Run `npm test` and `npm run typecheck`
+2. Install the extension locally with `pi install ./`
+3. Exercise the tool through the pi agent interface
+4. Verify happy paths and common error cases (timeouts, missing CLI dependencies, network failures)
+5. Ensure output truncation and temp-file fallback behavior works for large results
 
 ## Commit & Pull Request Guidelines
 
@@ -136,9 +149,9 @@ Meta:
 
 ## Agent-Specific Instructions
 
-- `web_search` is always the **first step** in web research
-- Prefer `web_fetch` for static pages; use `web_browse` only when interaction is required
-- Use `web_batch_fetch` for 2–5 pages at once; never exceed 10 URLs in a single call
+- `web_search` is the first discovery step when the user has not already provided source URLs
+- Prefer `web_fetch` for pages that need no interaction; use `web_browse` when interaction is required
+- Use `web_batch_fetch` for 2–5 pages at once; never exceed its 15-URL schema limit
 - All tools respect `AbortSignal` for cancellation and truncate large outputs automatically
 - External CLI dependencies (`scrapling`, `agent-browser`) must be installed separately by the end user
 

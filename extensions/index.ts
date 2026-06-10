@@ -3,7 +3,7 @@
  *
  * Registers all web research tools as a single extension:
  *   - web_search: Search via SearXNG
- *   - web_fetch: Fetch static pages with scrapling
+ *   - web_fetch: Fetch a single page with scrapling
  *   - web_browse: Interactive browser automation via agent-browser
  *   - web_batch_fetch: Concurrent multi-page fetching
  */

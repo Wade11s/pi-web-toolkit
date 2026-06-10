@@ -15,8 +15,7 @@ npx tsx test/content-preview/test.ts
 npm run test:approve
 ```
 
-First run fetches pages via scrapling and caches them in `fixtures/`.
-Subsequent runs use the cached fixtures.
+Tests use the committed files in `fixtures/`. If a fixture is missing, the test fetches it via Scrapling and caches it there.
 
 ## Fixtures
 
@@ -38,7 +37,7 @@ Subsequent runs use the cached fixtures.
 ## Snapshots & Regression
 
 - `baselines/{name}.txt` — the approved "correct" snapshot (committed to git)
-- `snapshots/{name}.txt` — the latest run's output (generated, not committed)
+- `snapshots/{name}.txt` — the latest run's output (generated and committed for review)
 - `snapshots/summary.md` — human-readable table + diff report
 
 If a test output differs from its baseline, the suite prints a diff and exits with code 1.

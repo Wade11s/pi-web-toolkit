@@ -8,7 +8,7 @@
  * filling forms, waiting for dynamic content) BEFORE its target content
  * becomes available.
  *
- * For static pages that need no interaction, use `web_fetch` instead.
+ * For pages that need no interaction, use `web_fetch` instead.
  */
 
 import {
@@ -88,10 +88,10 @@ const webBrowseTool = defineTool({
   description: [
     "Interact with a web page through a browser: navigate, click, fill forms, scroll,",
     "wait for content, and then extract text.",
-    "Uses the agent-browser CLI for fast, native browser automation via Chrome CDP.",
+    "Uses the agent-browser CLI with batched JSON commands.",
     "Use web_browse when the target content requires interaction (clicking buttons,",
     "scrolling, filling search boxes, waiting for JS to load) before it becomes available.",
-    "For static pages that need no interaction, use web_fetch instead.",
+    "For pages that need no interaction, use web_fetch instead.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
   promptSnippet: "Interact with a web page (click, scroll, fill) and extract content",
@@ -100,7 +100,7 @@ const webBrowseTool = defineTool({
     "Use web_browse for SPAs, pagination (click 'Load more'), search forms, tab switching, and modal dialogs.",
     "For static articles, docs, or blogs that load everything on first request, prefer web_fetch.",
     "After web_search returns results, prefer web_fetch for reading individual articles.",
-    "Only use web_browse if web_fetch fails to get the needed content.",
+    "Use web_browse directly when interaction is required; otherwise try web_fetch first.",
     "Always provide a selector to extract only the relevant content area — avoid dumping full page text.",
   ],
   parameters: WebBrowseParamsSchema,

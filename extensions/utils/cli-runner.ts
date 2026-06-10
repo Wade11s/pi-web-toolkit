@@ -3,7 +3,7 @@
  *
  * Provides a single interface for running external CLI commands
  * with consistent signal handling, timeout support, and stdout/stderr
- * collection. Enables testability by allowing the runner to be swapped.
+ * collection.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
