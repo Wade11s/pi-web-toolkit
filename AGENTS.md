@@ -6,14 +6,18 @@
 pi-web-toolkit/
 ├── extensions/              # Source code (TypeScript)
 │   ├── index.ts             # Unified extension entry point — registers all tools
-│   ├── web_search.ts        # SearXNG search tool
-│   ├── web_fetch.ts         # Single-page fetch via scrapling
-│   ├── web_browse.ts        # Interactive browser automation via agent-browser
+│   ├── web_search.ts        # SearXNG search tool (+ Firecrawl fallback)
+│   ├── web_fetch.ts         # Single-page fetch via scrapling (+ Firecrawl fallback)
+│   ├── web_browse.ts        # Interactive browser automation via agent-browser (+ Firecrawl fallback)
 │   ├── web_batch_fetch.ts   # Parallel multi-page fetching
+│   ├── firecrawl_search.ts  # Firecrawl keyless search escape hatch
+│   ├── firecrawl_scrape.ts  # Firecrawl keyless single-page fetch escape hatch
+│   ├── firecrawl_interact.ts # Firecrawl keyless natural-language interaction escape hatch
 │   └── utils/
 │       ├── agent-browser.ts # agent-browser command builder and parser
 │       ├── cli-runner.ts    # Shared external CLI process runner
 │       ├── content-preview.ts # Structural preview extraction
+│       ├── firecrawl.ts     # Firecrawl keyless CLI wrapper + fallback decisions
 │       ├── output-sink.ts   # Truncation and temp-file fallback
 │       ├── render-helpers.ts # Shared TUI formatting helpers
 │       ├── scrapling.ts     # scrapling CLI wrapper

@@ -16,6 +16,10 @@ A pi extension package that adds web research and browser automation tools to th
 | **content-preview** | Structural markdown analysis module that extracts readable preview snippets by classifying blocks (headings, paragraphs, lists, tables) and scoring them for content quality. Handles CJK text, Wikipedia TOC, HN tables, and form dropdowns. |
 | **output-sink** | Unified output handling module: truncation policy, temp-file fallback, and truncation notice formatting. Used by all four tools. |
 | **cli-runner** | Central process-spawning module with consistent signal, timeout, stdin, and output handling. |
+| **Firecrawl keyless** | Firecrawl's no-API-key free tier: 1,000 credits/month, IP-gated, granted only to official clients (MCP/CLI/SDK) on the `/search`, `/scrape`, and `/interact` endpoints. |
+| **cloud fallback** | The automatic retry-through-Firecrawl-keyless behavior of `web_search`, `web_fetch`, and `web_browse` when their local backend errors out (or search returns nothing). Always fallback-only, never the primary path. |
+| **free credits** | The monthly keyless allowance (1,000) that bounds how much cloud fallback can run before per-IP rate limits kick in. |
+| **graceful skip** | When a Firecrawl attempt cannot yield a result (CLI absent, IP flagged, rate-limited, or fallback disabled), the tool falls through to the original local-tool error rather than surfacing a worse one. |
 
 ## Architectural decisions
 
@@ -26,6 +30,7 @@ A pi extension package that adds web research and browser automation tools to th
 - **Output truncation** — All tools truncate large outputs automatically and fall back to temp files to stay within token budgets.
 - **Shared utility modules** — Common concerns (content preview, output sink, CLI runner) live in `extensions/utils/` as deep modules with narrow interfaces. Tools import them; duplication is avoided.
 - **Structural over heuristic** — The content-preview module parses markdown into semantic blocks rather than scoring character-level heuristics. This handles table-based pages (HN), CJK text, and mixed-language Wikipedia articles robustly.
+- **Optional keyless cloud fallback** — The local tools (`web_search`, `web_fetch`, `web_browse`) transparently retry through Firecrawl Keyless when their local backend fails or returns nothing; three explicit `firecrawl_*` tools are also exposed. The fallback is keyless-only, never the primary path, and opt-out-able. See [ADR 0001](docs/adr/0001-firecrawl-keyless-cloud-fallback.md).
 
 ## Consumer rules
 

@@ -160,3 +160,65 @@ User: "Compare Python asyncio, Trio, and curio"
   })
 → Agent synthesizes comparison from all 3 sources
 ```
+
+---
+
+## Firecrawl keyless tools (optional cloud escape hatches)
+
+These three tools talk to [Firecrawl](https://www.firecrawl.dev) in **keyless** mode: 1,000 free credits/month, **no API key and no signup**. They require the optional `firecrawl-cli` (`npm install -g firecrawl-cli`). **Privacy:** the URL/query/page content is sent to Firecrawl's cloud.
+
+They double as the implementation of the automatic fallback: `web_search`/`web_fetch`/`web_browse` retry through Firecrawl keyless when their local backend fails (or search returns nothing). Disable all Firecrawl usage with `PI_WEB_FIRECRAWL_FALLBACK=0`.
+
+### `firecrawl_search`
+
+Cloud web search via Firecrawl keyless, with capabilities the local SearXNG tool lacks.
+
+```typescript
+{
+  query: string,
+  limit?: number,                       // 1–100. Default 10
+  sources?: Array<"web"|"images"|"news">,
+  categories?: Array<"github"|"research"|"pdf">,
+  country?: string,                     // ISO code, e.g. "US", "DE"
+  tbs?: string,                         // qdr:h|d|w|m|y
+  location?: string,
+  includeDomains?: string[],            // hostnames; folded into the query as site: operators
+  excludeDomains?: string[],
+}
+```
+
+**When to use:** `web_search` failed or returned nothing; or you need `github`/`research`/`pdf` categories, images/news sources, or domain scoping that SearXNG does not provide.
+
+### `firecrawl_scrape`
+
+Cloud single-page fetch via Firecrawl keyless (anti-bot bypass, JS rendering, PDF parsing).
+
+```typescript
+{
+  url: string,
+  waitFor?: number,           // ms to wait for JS rendering
+  includeTags?: string[],     // Firecrawl tag filter (not a CSS selector)
+  excludeTags?: string[],
+  onlyMainContent?: boolean,  // Default: true
+}
+```
+
+**When to use:** `web_fetch` failed on an anti-bot-protected, JavaScript-heavy, or PDF page.
+
+### `firecrawl_interact`
+
+Open a URL in a live Firecrawl browser session and drive it with a natural-language prompt (or code).
+
+```typescript
+{
+  url: string,
+  prompt?: string,                            // natural-language task (required unless code is set)
+  code?: string,                              // code to run in the browser sandbox
+  language?: "node"|"python"|"bash",
+  timeout?: number,                           // seconds (1–300)
+}
+```
+
+**When to use:** `web_browse` cannot run (agent-browser missing / OS deps missing), or you want natural-language page interaction without hand-written CSS selectors. Write each prompt as a single, focused task.
+
+---

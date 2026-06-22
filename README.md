@@ -8,7 +8,7 @@
 
 **100% open-source. No required API keys or paid services.**
 
-Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel. All backends run locally or are self-hosted, with built-in truncation safety and LLM-optimized prompt guidelines.
+Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel. All primary backends run locally or are self-hosted, with an **optional Firecrawl Keyless cloud fallback** (no API key, no signup) so the local tools keep working when a backend is missing or fails. Built-in truncation safety and LLM-optimized prompt guidelines throughout.
 
 ## Features
 
@@ -18,6 +18,11 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 | **`web_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch a single page as clean markdown | — |
 | **`web_batch_fetch`** | [scrapling](https://github.com/D4Vinci/Scrapling) | Fetch 1–15 pages in parallel for research synthesis (2–5 recommended) | 3 concurrent (max 5) |
 | **`web_browse`** | [agent-browser](https://github.com/vercel-labs/agent-browser) | Interact with a page (click, scroll, fill) then extract content | 25 actions |
+| **`firecrawl_search`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud search with sources/categories/domain filters | — |
+| **`firecrawl_scrape`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud single-page fetch (anti-bot / JS / PDF) | — |
+| **`firecrawl_interact`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud natural-language page interaction | — |
+
+> **Firecrawl fallback.** `web_search`, `web_fetch`, and `web_browse` automatically retry through Firecrawl Keyless (1,000 free credits/month, no API key) when their local backend errors out or search returns nothing. The three `firecrawl_*` tools are explicit escape hatches. Disable it with `PI_WEB_FIRECRAWL_FALLBACK=0`. Install the optional CLI: `npm install -g firecrawl-cli`.
 
 ## Tools Preview
 
@@ -98,7 +103,10 @@ curl -fsS --get "${SEARXNG_ENDPOINT%/}/search" \
    agent-browser install
    agent-browser doctor
    On Linux, use agent-browser install --with-deps if required.
-5. After all dependencies pass verification, install the package:
+5. Optionally install firecrawl-cli for the keyless cloud fallback (no API key
+   needed; the fallback degrades gracefully if it is absent):
+   npm install -g firecrawl-cli
+6. After all dependencies pass verification, install the package:
    pi install npm:pi-web-toolkit
 
 Report what was installed or reused, all verification results, the SearXNG
@@ -141,6 +149,9 @@ scrapling install
 # agent-browser (for browse)
 npm i -g agent-browser && agent-browser install
 # On Linux hosts missing browser system libraries: agent-browser install --with-deps
+
+# firecrawl-cli (OPTIONAL — enables the keyless cloud fallback; no API key needed)
+npm i -g firecrawl-cli
 ```
 
 **Verify dependencies:**
@@ -175,31 +186,50 @@ pi install git:github.com/Wade11s/pi-web-toolkit
 | Variable | Default | Used By | Description |
 |----------|---------|---------|-------------|
 | `SEARXNG_URL` | `http://localhost:8080` | `web_search` | Your SearXNG instance endpoint |
+| `PI_WEB_FIRECRAWL_FALLBACK` | `1` (on) | all tools | Set to `0`/`false`/`no`/`off` to disable the optional Firecrawl keyless cloud fallback for a strict local-only policy. |
 
 Set before starting pi:
 
 ```bash
 export SEARXNG_URL="https://searxng.example.com"
+# Optional: disable the Firecrawl cloud fallback entirely
+export PI_WEB_FIRECRAWL_FALLBACK=0
 ```
+
+### Optional: Firecrawl keyless fallback
+
+When a local backend (`web_search`/`web_fetch`/`web_browse`) fails or returns nothing, the tools automatically retry through [Firecrawl Keyless](https://www.firecrawl.dev/blog/firecrawl-keyless-launch) — 1,000 free credits/month, **no API key, no signup**. The `firecrawl_*` tools are explicit escape hatches for capabilities the local backends lack (search categories, cloud rendering, natural-language interaction).
+
+Install the optional CLI (the fallback degrades gracefully if it is absent):
+
+```bash
+npm install -g firecrawl-cli
+```
+
+The fallback is **keyless-only**: it never reads or stores an API key, and spawns the CLI under an isolated temporary `HOME` with the key env stripped. **Privacy:** when the fallback runs, the URL and page content are sent to Firecrawl's cloud.
 
 ## Project Structure
 
 ```
 pi-web-toolkit/
 ├── extensions/
-│   ├── index.ts              # Unified entry point — registers all 4 tools
+│   ├── index.ts              # Unified entry point — registers all 7 tools (4 local + 3 Firecrawl keyless)
 │   ├── utils/
-│   │   ├── cli-runner.ts     # Unified CLI process spawning with timeout/AbortSignal
+│   │   ├── cli-runner.ts     # Unified CLI process spawning with timeout/AbortSignal/env
 │   │   ├── content-preview.ts # Intelligent content extraction from scraped pages
 │   │   ├── output-sink.ts    # Truncation + temp-file fallback
 │   │   ├── render-helpers.ts # URL abbreviations, text normalization, error formatting for TUI
 │   │   ├── scrapling.ts      # Reusable scrapling CLI wrapper (shared by fetch + batch)
 │   │   ├── tool-factory.ts   # Common tool registration patterns
-│   │   └── agent-browser.ts  # agent-browser CLI wrapper (shared by web_browse)
-│   ├── web_search.ts         # SearXNG search tool
-│   ├── web_fetch.ts          # Single-page scrapling fetcher
+│   │   ├── agent-browser.ts  # agent-browser CLI wrapper (shared by web_browse)
+│   │   └── firecrawl.ts      # Firecrawl keyless CLI wrapper + fallback decisions (shared by firecrawl_* tools + fallbacks)
+│   ├── web_search.ts         # SearXNG search tool (+ Firecrawl fallback)
+│   ├── web_fetch.ts          # Single-page scrapling fetcher (+ Firecrawl fallback)
 │   ├── web_batch_fetch.ts    # Parallel scrapling fetcher
-│   └── web_browse.ts         # Interactive browser automation (agent-browser)
+│   ├── web_browse.ts         # Interactive browser automation (agent-browser + Firecrawl fallback)
+│   ├── firecrawl_search.ts   # Firecrawl keyless search (escape hatch)
+│   ├── firecrawl_scrape.ts   # Firecrawl keyless single-page fetch (escape hatch)
+│   └── firecrawl_interact.ts # Firecrawl keyless natural-language interaction (escape hatch)
 ├── test/
 │   ├── agent-browser/        # agent-browser output parser regression tests
 │   ├── content-preview/      # Content preview fixtures, baselines & snapshots
