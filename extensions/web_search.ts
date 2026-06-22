@@ -20,6 +20,7 @@ import {
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { writeWithFallback } from "./utils/output-sink";
+import { searchKeyless, shouldFallbackSearch } from "./utils/firecrawl";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 
@@ -78,6 +79,9 @@ const webSearchTool = defineTool({
     let fullOutputPath: string | undefined;
     const MAX_PAGES = 3;
 
+    let localOk = true;
+    let localError: string | undefined;
+
     try {
       for (let page = 1; page <= MAX_PAGES; page++) {
         const searchParams = new URLSearchParams({
@@ -120,51 +124,89 @@ const webSearchTool = defineTool({
           break;
         }
       }
+    } catch (err: any) {
+      localOk = false;
+      localError = err.message ?? String(err);
+    }
 
-      if (allResults.length === 0) {
-        let text = `No results found for "${finalQuery}".`;
-        if (suggestions && suggestions.length > 0) {
-          text += `\n\nSuggestions:\n${suggestions.map((s) => `- ${s}`).join("\n")}`;
+    // Firecrawl keyless fallback: when SearXNG errored OR returned nothing.
+    if (shouldFallbackSearch(localOk, allResults.length)) {
+      const fb = await searchKeyless(params.query, { limit: Math.min(maxResults, 10) }, signal);
+      if (fb.ok && fb.results.length > 0) {
+        const fbResults: SearxResult[] = fb.results.slice(0, maxResults).map((r) => ({
+          title: r.title ?? "(untitled)",
+          url: r.url,
+          content: r.description,
+          engine: "firecrawl",
+        }));
+        const creditTag = fb.creditsUsed !== undefined ? `, ${fb.creditsUsed} credits` : "";
+        const lines: string[] = [`Results for "${params.query}" (via Firecrawl keyless${creditTag}):`, ""];
+        for (let i = 0; i < fbResults.length; i++) {
+          const r = fbResults[i];
+          lines.push(`${i + 1}. ${r.title}`);
+          lines.push(`   URL: ${r.url}`);
+          if (r.content) lines.push(`   ${r.content.replace(/\s+/g, " ").trim()}`);
+          if (r.engine) lines.push(`   [engine: ${r.engine}]`);
+          lines.push("");
         }
+        const rawText = lines.join("\n");
+        const sink = await writeWithFallback(rawText, {
+          tmpPrefix: "pi-web-search-firecrawl-",
+          alwaysWriteFile: true,
+        });
         return {
-          content: [{ type: "text", text }],
-          details: { query: finalQuery, totalResults: 0, results: [] as SearxResult[], fullOutputPath: undefined as string | undefined },
+          content: [{ type: "text", text: sink.text }],
+          details: { query: params.query, totalResults: fbResults.length, results: fbResults, fullOutputPath: sink.fullOutputPath, viaFirecrawl: true, creditsUsed: fb.creditsUsed },
         };
       }
-
-      const lines: string[] = [
-        `Results for "${finalQuery}":`,
-        "",
-      ];
-
-      for (let i = 0; i < Math.min(maxResults, allResults.length); i++) {
-        const r = allResults[i];
-        lines.push(`${i + 1}. ${r.title}`);
-        lines.push(`   URL: ${r.url}`);
-        if (r.content) {
-          const snippet = r.content.replace(/\s+/g, " ").trim();
-          lines.push(`   ${snippet}`);
-        }
-        if (r.engine) {
-          lines.push(`   [engine: ${r.engine}]`);
-        }
-        lines.push("");
-      }
-
-      const rawText = lines.join("\n");
-      const sink = await writeWithFallback(rawText, {
-        tmpPrefix: "pi-web-search-",
-        alwaysWriteFile: true,
-      });
-      fullOutputPath = sink.fullOutputPath;
-
-      return {
-        content: [{ type: "text", text: sink.text }],
-        details: { query: finalQuery, totalResults: allResults.length, results: allResults.slice(0, maxResults), fullOutputPath },
-      };
-    } catch (err: any) {
-      throw new Error(`Failed to query SearXNG at ${searxngUrl}: ${err.message ?? err}`);
+      // Graceful skip or empty Firecrawl: fall through to local handling.
     }
+
+    if (!localOk) {
+      throw new Error(`Failed to query SearXNG at ${searxngUrl}: ${localError}`);
+    }
+
+    if (allResults.length === 0) {
+      let text = `No results found for "${finalQuery}".`;
+      if (suggestions && suggestions.length > 0) {
+        text += `\n\nSuggestions:\n${suggestions.map((s) => `- ${s}`).join("\n")}`;
+      }
+      return {
+        content: [{ type: "text", text }],
+        details: { query: finalQuery, totalResults: 0, results: [] as SearxResult[], fullOutputPath: undefined as string | undefined, viaFirecrawl: false, creditsUsed: undefined },
+      };
+    }
+
+    const lines: string[] = [
+      `Results for "${finalQuery}":`,
+      "",
+    ];
+
+    for (let i = 0; i < Math.min(maxResults, allResults.length); i++) {
+      const r = allResults[i];
+      lines.push(`${i + 1}. ${r.title}`);
+      lines.push(`   URL: ${r.url}`);
+      if (r.content) {
+        const snippet = r.content.replace(/\s+/g, " ").trim();
+        lines.push(`   ${snippet}`);
+      }
+      if (r.engine) {
+        lines.push(`   [engine: ${r.engine}]`);
+      }
+      lines.push("");
+    }
+
+    const rawText = lines.join("\n");
+    const sink = await writeWithFallback(rawText, {
+      tmpPrefix: "pi-web-search-",
+      alwaysWriteFile: true,
+    });
+    fullOutputPath = sink.fullOutputPath;
+
+    return {
+      content: [{ type: "text", text: sink.text }],
+      details: { query: finalQuery, totalResults: allResults.length, results: allResults.slice(0, maxResults), fullOutputPath, viaFirecrawl: false, creditsUsed: undefined },
+    };
   },
 
   renderCall(args, theme) {
@@ -190,6 +232,8 @@ const webSearchTool = defineTool({
       totalResults?: number;
       results?: Array<{ title?: string; url?: string; score?: number; engine?: string; content?: string }>;
       fullOutputPath?: string;
+      viaFirecrawl?: boolean;
+      creditsUsed?: number;
     } | undefined;
 
     if (isError) {
@@ -207,7 +251,13 @@ const webSearchTool = defineTool({
     const showing = details.results?.length ?? 0;
     const total = details?.totalResults ?? 0;
     let text = theme.fg("success", `✓ ${showing} unique results`);
-    if (total > showing) {
+    if (details?.viaFirecrawl) {
+      text += theme.fg("accent", " [Firecrawl keyless]");
+    }
+    if (details?.creditsUsed !== undefined) {
+      text += theme.fg("muted", ` ${details.creditsUsed} credits`);
+    }
+    if (!details?.viaFirecrawl && total > showing) {
       text += theme.fg("dim", ` (${total} total)`);
     }
 

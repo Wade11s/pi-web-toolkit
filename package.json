@@ -19,8 +19,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts",
+    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts && tsx test/firecrawl/test.ts",
     "test:agent-browser": "tsx test/agent-browser/test.ts",
+    "test:firecrawl": "tsx test/firecrawl/test.ts",
     "test:approve": "tsx test/content-preview/test.ts --approve"
   },
   "devDependencies": {

@@ -28,6 +28,7 @@ import {
   closeAgentBrowserSession,
 } from "./utils/agent-browser";
 import { writeWithFallback } from "./utils/output-sink";
+import { interactKeyless, shouldFallbackBrowse, isFirecrawlEnabled } from "./utils/firecrawl";
 import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 export const WebBrowseActionSchema = Type.Object({
@@ -80,6 +81,25 @@ function formatBrowseStep(action: BrowseAction): string {
     default:
       return String((action as any).type);
   }
+}
+
+function synthesizeBrowsePrompt(params: { url: string; actions: BrowseAction[]; selector?: string }): string {
+  const parts: string[] = [];
+  for (const a of params.actions) {
+    switch (a.type) {
+      case "click": parts.push(`click the element "${a.selector ?? ""}"`); break;
+      case "fill": case "type": parts.push(`type "${a.value ?? ""}" into "${a.selector ?? ""}"`); break;
+      case "press": parts.push(`press ${a.key ?? ""}`); break;
+      case "scroll": parts.push(`scroll ${a.direction ?? "down"}`); break;
+      case "wait": parts.push("wait briefly"); break;
+      case "wait_selector": parts.push(`wait for "${a.selector ?? ""}" to appear`); break;
+    }
+  }
+  const actionText = parts.length ? `Perform these actions in order: ${parts.join("; ")}. ` : "";
+  const extract = params.selector
+    ? `Then return the text content of the element matching "${params.selector}".`
+    : "Then return the main textual content of the page.";
+  return `${actionText}${extract}`;
 }
 
 const webBrowseTool = defineTool({
@@ -195,6 +215,38 @@ const webBrowseTool = defineTool({
         },
       };
     } catch (err: any) {
+      // Firecrawl keyless fallback: only on runtime failures (CLI missing /
+      // batch failure), never on local validation errors (bad caller actions).
+      if (isFirecrawlEnabled() && !signal?.aborted && shouldFallbackBrowse(err as Error)) {
+        const fb = await interactKeyless(
+          params.url,
+          { prompt: synthesizeBrowsePrompt({ url: params.url, actions: params.actions as BrowseAction[], selector: params.selector }), timeout: 60 },
+          signal,
+        );
+        if (fb.ok) {
+          const preview = (fb.output || "").replace(/\s+/g, " ").trim().slice(0, 500);
+          const creditTag = fb.creditsUsed !== undefined ? `, ${fb.creditsUsed} credits` : "";
+          const rawText = `URL: ${params.url}\n(via Firecrawl keyless interact fallback${creditTag})\n\n---\n\n${fb.output || "(no content extracted)"}`;
+          const sink = await writeWithFallback(rawText, { tmpPrefix: "pi-web-browse-firecrawl-" });
+          return {
+            content: [{ type: "text", text: sink.text }],
+            details: {
+              title: "",
+              url: params.url,
+              fullOutputPath: sink.fullOutputPath,
+              preview,
+              selector: params.selector,
+              headless: params.headless ?? true,
+              actionCount,
+              steps,
+              viaFirecrawl: true,
+              creditsUsed: fb.creditsUsed,
+            },
+          };
+        }
+        // Graceful skip (CLI absent / IP flagged / rate-limited / disabled):
+        // fall through to the original local error.
+      }
       throw new Error(`Error browsing ${params.url}: ${err.message ?? err}`);
     } finally {
       await closeAgentBrowserSession(session, signal);
@@ -249,6 +301,8 @@ const webBrowseTool = defineTool({
       headless?: boolean;
       actionCount?: number;
       steps?: string[];
+      viaFirecrawl?: boolean;
+      creditsUsed?: number;
     } | undefined;
 
     if (isError) {
@@ -266,6 +320,9 @@ const webBrowseTool = defineTool({
     }
 
     let text = theme.fg("success", "✓ Browsed");
+    if (details?.viaFirecrawl) {
+      text += theme.fg("accent", " [Firecrawl keyless]");
+    }
     if (details?.title) {
       text += `  ${theme.fg("toolTitle", details.title)}`;
     }

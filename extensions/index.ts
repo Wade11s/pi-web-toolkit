@@ -13,10 +13,16 @@ import registerWebSearch from "./web_search";
 import registerWebFetch from "./web_fetch";
 import registerWebBrowse from "./web_browse";
 import registerWebBatchFetch from "./web_batch_fetch";
+import registerFirecrawlScrape from "./firecrawl_scrape";
+import registerFirecrawlSearch from "./firecrawl_search";
+import registerFirecrawlInteract from "./firecrawl_interact";
 
 export default function (pi: ExtensionAPI) {
   registerWebSearch(pi);
   registerWebFetch(pi);
   registerWebBrowse(pi);
   registerWebBatchFetch(pi);
+  registerFirecrawlScrape(pi);
+  registerFirecrawlSearch(pi);
+  registerFirecrawlInteract(pi);
 }

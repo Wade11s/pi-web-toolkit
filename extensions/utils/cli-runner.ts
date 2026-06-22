@@ -17,6 +17,8 @@ export interface CLIRunOptions {
   timeout?: number;
   /** AbortSignal for cancellation. */
   signal?: AbortSignal;
+  /** Optional environment override for the child process. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface CLIRunResult {
@@ -44,6 +46,7 @@ export function runCLI(options: CLIRunOptions): Promise<CLIRunResult> {
     const proc = spawn(options.command, options.args, {
       shell: false,
       stdio: stdio as any,
+      env: options.env,
     }) as ChildProcess;
 
     let stdout = "";

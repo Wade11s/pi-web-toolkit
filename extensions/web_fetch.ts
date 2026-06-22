@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { runScraplingWithFallback } from "./utils/scrapling";
 import { extractPreview } from "./utils/content-preview";
 import { writeWithFallback } from "./utils/output-sink";
+import { scrapeKeyless } from "./utils/firecrawl";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
 
 export const WebFetchParamsSchema = Type.Object({
@@ -68,15 +69,31 @@ const webFetchTool = defineTool({
         signal,
       );
 
-      if (!ok) {
-        throw new Error(`Failed to fetch ${params.url}\n\nscrapling error:\n${stderr}`);
+      let content: string;
+      let bytes: number;
+      let viaFirecrawl = false;
+
+      if (ok) {
+        content = await fs.promises.readFile(tmpFile, "utf-8");
+        bytes = (await fs.promises.stat(tmpFile)).size;
+      } else {
+        // Local scrapling failed — try the Firecrawl keyless fallback.
+        const localError = `Failed to fetch ${params.url}\n\nscrapling error:\n${stderr}`;
+        const fb = await scrapeKeyless(params.url, {}, signal);
+        if (fb.ok) {
+          content = fb.content;
+          bytes = fb.bytes;
+          viaFirecrawl = true;
+        } else {
+          // Graceful skip (CLI absent / IP flagged / rate-limited / disabled):
+          // never leave the user worse off — surface the original local error.
+          throw new Error(localError);
+        }
       }
 
-      const content = await fs.promises.readFile(tmpFile, "utf-8");
-      const stats = await fs.promises.stat(tmpFile);
-
       const preview = extractPreview(content, 500);
-      const rawText = `Fetched: ${params.url}\nSize: ${stats.size} bytes\n\n---\n\n${content}`;
+      const viaTag = viaFirecrawl ? "\n(via Firecrawl keyless fallback)" : "";
+      const rawText = `Fetched: ${params.url}${viaTag}\nSize: ${bytes} bytes\n\n---\n\n${content}`;
       const sink = await writeWithFallback(rawText, {
         tmpPrefix: "pi-web-fetch-full-",
       });
@@ -86,11 +103,12 @@ const webFetchTool = defineTool({
         content: [{ type: "text", text: sink.text }],
         details: {
           url: params.url,
-          bytes: stats.size,
+          bytes,
           fullOutputPath: tmpFull,
           preview,
           selector: params.selector,
           stealthy: params.stealthy,
+          viaFirecrawl,
         },
       };
     } catch (err: any) {
@@ -128,6 +146,7 @@ const webFetchTool = defineTool({
       preview?: string;
       selector?: string;
       stealthy?: boolean;
+      viaFirecrawl?: boolean;
     } | undefined;
 
     if (isError) {
@@ -139,6 +158,9 @@ const webFetchTool = defineTool({
     }
 
     let text = theme.fg("success", "✓ Fetched");
+    if (details?.viaFirecrawl) {
+      text += theme.fg("accent", " [Firecrawl keyless]");
+    }
     if (details?.url) {
       text += `  ${theme.fg("dim", abbreviateUrl(details.url))}`;
     }
