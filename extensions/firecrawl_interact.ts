@@ -23,7 +23,7 @@ import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { interactKeyless } from "./utils/firecrawl";
 import { writeWithFallback } from "./utils/output-sink";
-import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
+import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 export const FirecrawlInteractParamsSchema = Type.Object({
   url: Type.String({ description: "Full URL to open and interact with" }),
@@ -90,7 +90,6 @@ const firecrawlInteractTool = defineTool({
   renderCall(args, theme) {
     let text = theme.fg("toolTitle", theme.bold("firecrawl_interact "));
     text += theme.fg("muted", args.url);
-    if (args.prompt) text += theme.fg("dim", ` — ${args.prompt.slice(0, 60)}`);
     return new Text(text, 0, 0);
   },
 
@@ -98,7 +97,9 @@ const firecrawlInteractTool = defineTool({
     const isError = context?.isError ?? false;
 
     if (isPartial) {
-      return new Text(theme.fg("warning", "Interacting via Firecrawl..."), 0, 0);
+      const domain = details?.url ? getDomain(details.url) : "";
+      const label = domain ? `Interacting with ${domain} via Firecrawl...` : "Interacting via Firecrawl...";
+      return new Text(theme.fg("warning", label), 0, 0);
     }
 
     const details = result.details as {

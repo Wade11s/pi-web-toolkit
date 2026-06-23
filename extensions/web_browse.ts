@@ -323,6 +323,9 @@ const webBrowseTool = defineTool({
     if (details?.viaFirecrawl) {
       text += theme.fg("accent", " [Firecrawl keyless]");
     }
+    if (details?.creditsUsed !== undefined) {
+      text += theme.fg("muted", ` ${details.creditsUsed} credits`);
+    }
     if (details?.title) {
       text += `  ${theme.fg("toolTitle", details.title)}`;
     }

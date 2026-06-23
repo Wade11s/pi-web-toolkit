@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-23
+
+### Changed
+
+- UI consistency fixes for the three Firecrawl keyless tools and their fallback paths:
+  - `firecrawl_interact` renderCall: removed em-dash prose (` — prompt`), now purely tag-style (consistent with `web_browse`/`web_fetch`).
+  - `web_browse` fallback render: now displays `creditsUsed` (was filled in execute but missing in render).
+  - `firecrawl_scrape`/`firecrawl_interact` isPartial: now includes target domain (e.g. `Scraping example.com via Firecrawl...`), matching `web_fetch`/`web_browse` style.
+
 ## [0.3.0] - 2026-06-23
 
 ### Added

@@ -25,7 +25,7 @@ import { Type, type Static } from "typebox";
 import { scrapeKeyless } from "./utils/firecrawl";
 import { extractPreview } from "./utils/content-preview";
 import { writeWithFallback } from "./utils/output-sink";
-import { abbreviateUrl, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
+import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
 
 export const FirecrawlScrapeParamsSchema = Type.Object({
   url: Type.String({ description: "Full URL to fetch (e.g. https://example.com/article)" }),
@@ -99,7 +99,9 @@ const firecrawlScrapeTool = defineTool({
     const isError = context?.isError ?? false;
 
     if (isPartial) {
-      return new Text(theme.fg("warning", "Scraping via Firecrawl..."), 0, 0);
+      const domain = details?.url ? getDomain(details.url) : "";
+      const label = domain ? `Scraping ${domain} via Firecrawl...` : "Scraping via Firecrawl...";
+      return new Text(theme.fg("warning", label), 0, 0);
     }
 
     const details = result.details as {
