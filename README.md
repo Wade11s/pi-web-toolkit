@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933)
 
-**100% open-source. No required API keys or paid services.**
+**Local-first & 100% open-source. No required API keys or paid services.**
 
 Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel. All primary backends run locally or are self-hosted, with an **optional Firecrawl Keyless cloud fallback** (no API key, no signup) so the local tools keep working when a backend is missing or fails. Built-in truncation safety and LLM-optimized prompt guidelines throughout.
 

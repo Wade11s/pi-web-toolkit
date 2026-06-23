@@ -1,7 +1,7 @@
 {
   "name": "pi-web-toolkit",
-  "version": "0.2.2",
-  "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, and batch-read sources in parallel.",
+  "version": "0.3.0",
+  "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, batch-read sources in parallel, and optionally fall back to Firecrawl Keyless (no API key) when a local backend fails.",
   "author": "Wade Huang <fastwade11@gmail.com>",
   "license": "MIT",
   "repository": {
@@ -12,7 +12,7 @@
     "url": "https://github.com/Wade11s/pi-web-toolkit/issues"
   },
   "homepage": "https://github.com/Wade11s/pi-web-toolkit#readme",
-  "keywords": ["pi-package", "pi-extension", "web-search", "scrapling", "agent-browser"],
+  "keywords": ["pi-package", "pi-extension", "web-search", "scrapling", "agent-browser", "firecrawl"],
   "files": ["extensions", "docs", "README.md", "CHANGELOG.md", "package.json", "LICENSE"],
   "engines": {
     "node": ">=22.0.0"

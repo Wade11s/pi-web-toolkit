@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-23
+
+### Added
+
+- **Firecrawl Keyless fallback** — `web_search`, `web_fetch`, and `web_browse` now automatically retry through [Firecrawl Keyless](https://www.firecrawl.dev/blog/firecrawl-keyless-launch) (1,000 free credits/month, **no API key, no signup**) when their local backend errors out, or when `web_search` returns zero results. The fallback is keyless-only, never the primary path, and degrades gracefully to the original local-tool error if the `firecrawl-cli` is absent, the IP is flagged, the quota is exhausted, or the fallback is disabled.
+- Three explicit escape-hatch tools for capabilities the local backends lack: `firecrawl_search` (sources, `github`/`research`/`pdf` categories, domain filters), `firecrawl_scrape` (anti-bot bypass, JS rendering, PDF parsing), and `firecrawl_interact` (natural-language page interaction).
+- `extensions/utils/firecrawl.ts` — a deep Firecrawl CLI wrapper (scrape/search/interact argument builders, output parsers, graceful-skip failure classifier, keyless-eligibility check, and fallback-decision predicates).
+- Optional external CLI dependency: `npm install -g firecrawl-cli`.
+- Environment toggle `PI_WEB_FIRECRAWL_FALLBACK` (default on) to disable all Firecrawl usage.
+- `test/firecrawl/test.ts` — pure-function regression tests for the firecrawl wrapper boundary (wired into `npm test` as `test:firecrawl`).
+- ADR 0001 and `CONTEXT.md` glossary entries (`Firecrawl keyless`, `cloud fallback`, `free credits`, `graceful skip`) documenting the local-first → optional keyless cloud fallback architectural decision.
+
+### Changed
+
+- **Default network/privacy behavior.** When a local web tool fails, it now makes a cloud request to Firecrawl (sending the URL/query and page content) before giving up. The fallback is **keyless-only** — it never reads, stores, or sends an API key, and spawns the CLI under an isolated temporary `HOME` with the key env stripped. To enforce a strict local-only / no-cloud-egress policy, set `PI_WEB_FIRECRAWL_FALLBACK=0`.
+- `web_search` falls back on a SearXNG error **or** zero results; `web_fetch` falls back on a scrapling failure (incl. its HTTP-GET fallback); `web_browse` falls back only on runtime failures (missing/broken `agent-browser`), never on caller validation errors. `web_batch_fetch` has no fallback (Firecrawl batch scrape is not keyless).
+- Firecrawl results report `creditsUsed` where the source provides it (search, interact); scrape responses do not surface it.
+- README tagline and hero now describe the toolkit as local-first with an optional keyless cloud fallback; features table, install prompt, configuration, project structure, tool reference, and usage guide updated accordingly.
+- `cli-runner` gained an optional `env` passthrough so the firecrawl CLI can be spawned keyless-only.
+
 ## [0.2.2] - 2026-06-11
 
 ### Added
