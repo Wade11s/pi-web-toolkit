@@ -39,18 +39,18 @@ const firecrawlInteractTool = defineTool({
   name: "firecrawl_interact",
   label: "Firecrawl Interact",
   description: [
+    "Fallback-only cloud browser interaction via Firecrawl keyless.",
+    "Do not use firecrawl_interact as the first attempt for ordinary page interaction; use web_browse first.",
     "Open a URL in a live Firecrawl browser session and drive it with a natural-language",
-    "prompt (or code), returning the result. Keyless — no API key, no signup.",
-    "Use firecrawl_interact when the local web_browse cannot run, or when you want",
-    "natural-language page interaction without CSS selectors.",
+    "prompt (or code), returning the result. Use only when web_browse cannot run,",
+    "when the user explicitly asks for Firecrawl/cloud interaction, or when you need natural-language page interaction without CSS selectors.",
     "Privacy: the URL, page content, and prompt are sent to Firecrawl's cloud.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
-  promptSnippet: "Drive a page via Firecrawl keyless (natural-language interaction)",
+  promptSnippet: "Fallback-only Firecrawl interaction",
   promptGuidelines: [
-    "Prefer web_browse first; reach for firecrawl_interact when web_browse can't run or you want NL interaction.",
-    "Write each prompt as a single, focused task; the session can be reused across calls.",
-    "Always pass the full URL including https://.",
+    "Use firecrawl_interact only after web_browse fails, for needed NL interaction, or explicit cloud interaction.",
+    "Keep firecrawl_interact prompt/code focused.",
   ],
   parameters: FirecrawlInteractParamsSchema,
 
@@ -95,13 +95,6 @@ const firecrawlInteractTool = defineTool({
 
   renderResult(result, { expanded, isPartial }, theme, context) {
     const isError = context?.isError ?? false;
-
-    if (isPartial) {
-      const domain = details?.url ? getDomain(details.url) : "";
-      const label = domain ? `Interacting with ${domain} via Firecrawl...` : "Interacting via Firecrawl...";
-      return new Text(theme.fg("warning", label), 0, 0);
-    }
-
     const details = result.details as {
       url?: string;
       output?: string;
@@ -110,6 +103,12 @@ const firecrawlInteractTool = defineTool({
       liveViewUrl?: string;
       creditsUsed?: number;
     } | undefined;
+
+    if (isPartial) {
+      const domain = details?.url ? getDomain(details.url) : "";
+      const label = domain ? `Interacting with ${domain} via Firecrawl...` : "Interacting via Firecrawl...";
+      return new Text(theme.fg("warning", label), 0, 0);
+    }
 
     if (isError) {
       const errText = getErrorText(result);

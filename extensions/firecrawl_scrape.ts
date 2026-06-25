@@ -41,17 +41,17 @@ const firecrawlScrapeTool = defineTool({
   name: "firecrawl_scrape",
   label: "Firecrawl Scrape",
   description: [
-    "Fetch a single page as clean markdown via Firecrawl (keyless — no API key, no signup).",
-    "Use firecrawl_scrape when the local web_fetch fails on a hard target (anti-bot,",
-    "JavaScript-heavy pages, PDFs) or when you need Firecrawl's cloud rendering directly.",
+    "Fallback-only cloud fetch via Firecrawl (keyless — no API key, no signup).",
+    "Do not use firecrawl_scrape as the first attempt for ordinary URL reading; use web_fetch first.",
+    "Use firecrawl_scrape only when web_fetch already failed on a hard target (anti-bot,",
+    "JavaScript-heavy pages, PDFs), or when the user explicitly asks for Firecrawl/cloud rendering.",
     "Privacy: the URL and page content are sent to Firecrawl's cloud.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
-  promptSnippet: "Fetch a single page via Firecrawl keyless (anti-bot / JS / PDF fallback)",
+  promptSnippet: "Fallback-only Firecrawl scrape",
   promptGuidelines: [
-    "Prefer web_fetch first; reach for firecrawl_scrape when web_fetch fails or you need cloud rendering.",
-    "firecrawl_scrape handles anti-bot protection, JS-heavy SPAs, and PDFs that scrapling may miss.",
-    "Always pass the full URL including https://.",
+    "Use firecrawl_scrape only after web_fetch fails or explicit cloud scraping/rendering.",
+    "Use firecrawl_scrape for anti-bot pages, heavy JS, and PDFs.",
   ],
   parameters: FirecrawlScrapeParamsSchema,
 
@@ -97,13 +97,6 @@ const firecrawlScrapeTool = defineTool({
 
   renderResult(result, { expanded, isPartial }, theme, context) {
     const isError = context?.isError ?? false;
-
-    if (isPartial) {
-      const domain = details?.url ? getDomain(details.url) : "";
-      const label = domain ? `Scraping ${domain} via Firecrawl...` : "Scraping via Firecrawl...";
-      return new Text(theme.fg("warning", label), 0, 0);
-    }
-
     const details = result.details as {
       url?: string;
       bytes?: number;
@@ -112,6 +105,12 @@ const firecrawlScrapeTool = defineTool({
       title?: string;
       creditsUsed?: number;
     } | undefined;
+
+    if (isPartial) {
+      const domain = details?.url ? getDomain(details.url) : "";
+      const label = domain ? `Scraping ${domain} via Firecrawl...` : "Scraping via Firecrawl...";
+      return new Text(theme.fg("warning", label), 0, 0);
+    }
 
     if (isError) {
       const errText = getErrorText(result);

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-25
+
+### Fixed
+
+- Kept the agent's web-tool selection local-first: ordinary URL reads now prefer `web_fetch`, discovery prefers `web_search`, and interaction prefers `web_browse`; `firecrawl_*` tools are documented and prompted as fallback-only unless explicitly requested.
+- Fixed `firecrawl_scrape` and `firecrawl_interact` partial-result rendering type-check errors caused by reading `details` before declaration.
+
+### Changed
+
+- Reduced web-tool prompt metadata overhead by consolidating shared routing rules and shortening per-tool `promptSnippet`/`promptGuidelines` text.
+- Added a tool-routing prompt regression test and included it in `npm test`.
+
 ## [0.3.1] - 2026-06-23
 
 ### Changed
@@ -145,7 +157,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `web_browse` — interactive browser automation via agent-browser.
 - LLM-optimized `promptGuidelines` and `promptSnippet` for every tool.
 
-[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.1.2...v0.2.0

@@ -46,7 +46,7 @@ User asks about something external / current
 
 ## Firecrawl Keyless fallback
 
-When a local backend cannot do the job, the tools automatically retry through **Firecrawl Keyless** (1,000 free credits/month, no API key, no signup) before giving up. It is **fallback-only** — never the primary path — and is **opt-out-able** with `PI_WEB_FIRECRAWL_FALLBACK=0`. Requires the optional `firecrawl-cli` (`npm install -g firecrawl-cli`); if it is absent the tools simply surface the original local error.
+When a local backend cannot do the job, the tools automatically retry through **Firecrawl Keyless** (1,000 free credits/month, no API key, no signup) before giving up. It is **fallback-only** — never the primary path — and is **opt-out-able** with `PI_WEB_FIRECRAWL_FALLBACK=0`. Requires the optional `firecrawl-cli` (`npm install -g firecrawl-cli`); if it is absent the tools simply surface the original local error. Agents should call `web_search`/`web_fetch`/`web_browse` first and call `firecrawl_*` directly only after the corresponding local-first tool failed, or when the user explicitly asks for Firecrawl/cloud behavior.
 
 | Tool | Falls back to Firecrawl when… |
 |------|-------------------------------|
@@ -55,7 +55,7 @@ When a local backend cannot do the job, the tools automatically retry through **
 | `web_browse` | agent-browser is missing or its batch fails (not on caller validation errors) |
 | `web_batch_fetch` | (no fallback — Firecrawl batch scrape is not keyless) |
 
-The three `firecrawl_*` tools are the explicit escape hatches for capabilities the local backends lack (`github`/`research`/`pdf` search categories, cloud rendering, natural-language interaction).
+The three `firecrawl_*` tools are fallback-only explicit escape hatches for capabilities the local backends lack (`github`/`research`/`pdf` search categories, cloud rendering, natural-language interaction). They are not the first step for ordinary URL reading; `web_fetch` already performs Firecrawl fallback internally when local fetching fails.
 
 **Graceful skip.** If the fallback itself cannot help — the CLI is missing, the IP is flagged as suspicious, the keyless quota is exhausted, or the fallback is disabled — the tool falls through to the original local-tool error so the user is never left worse off.
 

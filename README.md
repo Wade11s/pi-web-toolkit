@@ -22,7 +22,7 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 | **`firecrawl_scrape`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud single-page fetch (anti-bot / JS / PDF) | — |
 | **`firecrawl_interact`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud natural-language page interaction | — |
 
-> **Firecrawl fallback.** `web_search`, `web_fetch`, and `web_browse` automatically retry through Firecrawl Keyless (1,000 free credits/month, no API key) when their local backend errors out or search returns nothing. The three `firecrawl_*` tools are explicit escape hatches. Disable it with `PI_WEB_FIRECRAWL_FALLBACK=0`. Install the optional CLI: `npm install -g firecrawl-cli`.
+> **Firecrawl fallback.** `web_search`, `web_fetch`, and `web_browse` are the local-first primary tools and automatically retry through Firecrawl Keyless (1,000 free credits/month, no API key) only when their local backend errors out or search returns nothing. The three `firecrawl_*` tools are fallback-only escape hatches; agents are instructed not to call them first unless you explicitly ask for Firecrawl/cloud behavior or a local-first tool already failed. Disable fallback use with `PI_WEB_FIRECRAWL_FALLBACK=0`. Install the optional CLI: `npm install -g firecrawl-cli`.
 
 ## Tools Preview
 
@@ -198,7 +198,7 @@ export PI_WEB_FIRECRAWL_FALLBACK=0
 
 ### Optional: Firecrawl keyless fallback
 
-When a local backend (`web_search`/`web_fetch`/`web_browse`) fails or returns nothing, the tools automatically retry through [Firecrawl Keyless](https://www.firecrawl.dev/blog/firecrawl-keyless-launch) — 1,000 free credits/month, **no API key, no signup**. The `firecrawl_*` tools are explicit escape hatches for capabilities the local backends lack (search categories, cloud rendering, natural-language interaction).
+When a local backend (`web_search`/`web_fetch`/`web_browse`) fails or returns nothing, the tools automatically retry through [Firecrawl Keyless](https://www.firecrawl.dev/blog/firecrawl-keyless-launch) — 1,000 free credits/month, **no API key, no signup**. The `firecrawl_*` tools are fallback-only explicit escape hatches for capabilities the local backends lack (search categories, cloud rendering, natural-language interaction). Agents should use `web_fetch`/`web_search`/`web_browse` first unless you explicitly request Firecrawl/cloud behavior.
 
 Install the optional CLI (the fallback degrades gracefully if it is absent):
 

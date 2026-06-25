@@ -42,17 +42,17 @@ const firecrawlSearchTool = defineTool({
   name: "firecrawl_search",
   label: "Firecrawl Search",
   description: [
-    "Search the web via Firecrawl (keyless — no API key, no signup).",
+    "Fallback-only cloud search via Firecrawl (keyless — no API key, no signup).",
+    "Do not use firecrawl_search as the first attempt for ordinary web discovery; use web_search first.",
     "Supports sources (web/images/news) and categories (github/research/pdf) that",
-    "SearXNG does not. Use as an escape hatch or when web_search returns nothing.",
+    "SearXNG does not. Use only as an escape hatch when web_search fails/returns nothing, or when the user explicitly asks for Firecrawl/cloud search.",
     "Privacy: the query is sent to Firecrawl's cloud.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
-  promptSnippet: "Search the web via Firecrawl keyless (categories, sources, domain filters)",
+  promptSnippet: "Fallback-only Firecrawl search",
   promptGuidelines: [
-    "Prefer web_search first; reach for firecrawl_search when web_search fails or returns nothing.",
-    "Use categories=[\"github\"], [\"research\"], or [\"pdf\"] for source-type-specific discovery.",
-    "Use includeDomains/excludeDomains to scope results to specific sites.",
+    "Use firecrawl_search only after web_search fails/returns nothing, for Firecrawl-only categories, or explicit cloud search.",
+    "Use categories=[\"github\"|\"research\"|\"pdf\"] and includeDomains/excludeDomains when needed.",
   ],
   parameters: FirecrawlSearchParamsSchema,
 

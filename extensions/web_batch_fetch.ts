@@ -113,14 +113,10 @@ const webBatchFetchTool = defineTool({
     "For a single page, use web_fetch instead.",
     `Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; if truncated, full output is saved to a temp file.`,
   ].join(" "),
-  promptSnippet: "Fetch multiple URLs in parallel for research",
+  promptSnippet: "Parallel fetch for 2–5 URLs",
   promptGuidelines: [
-    "Use web_batch_fetch when web_search returns multiple (2–5) relevant pages and the agent needs to read them all at once.",
-    "Prefer web_batch_fetch over repeated web_fetch calls when reading multiple pages for comparison or synthesis.",
-    "Use web_batch_fetch for cross-referencing sources, comparing implementations, or synthesizing research from multiple sites.",
-    "For a single URL, always use web_fetch — it supports per-URL selectors and stealthy mode.",
-    "If a page in the batch fails, the tool reports the error but continues with the others.",
-    "Keep batch sizes reasonable (≤8) to avoid overwhelming the browser and token budget.",
+    "Use web_batch_fetch for 2–5 pages to compare/cross-reference/synthesize; single URL → web_fetch.",
+    "Keep batches small (≤8; schema max 15); failed pages are reported without stopping the batch.",
   ],
   parameters: WebBatchFetchParamsSchema,
 

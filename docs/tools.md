@@ -12,7 +12,7 @@ Search the web via SearXNG. Returns ranked results with title, URL, and snippet.
 }
 ```
 
-**When to use:** The user asks about current events, facts, or anything requiring up-to-date information and has not already provided the source URLs.
+**When to use:** The user asks about current events, facts, or anything requiring up-to-date information and has not already provided the source URLs. Use `web_search` before `firecrawl_search`; `web_search` already performs Firecrawl fallback internally when SearXNG fails or returns nothing.
 
 **Empty results behavior:** When no results are found, `web_search` includes any query **suggestions** provided by SearXNG. The agent can use them to refine and retry the search.
 
@@ -35,9 +35,10 @@ Fetch a single page and convert it to clean markdown. Uses Scrapling's browser-b
 ```
 
 **When to use:**
-- After `web_search` finds a relevant result
+- As the first attempt for a user-provided URL or after `web_search` finds a relevant result
 - The page is static or loads its content on first request
 - You need to read **one** article, doc, or blog post
+- Before `firecrawl_scrape`; `web_fetch` already performs Firecrawl fallback internally when the local fetcher fails
 
 **Example flow:**
 ```
@@ -77,10 +78,12 @@ Uses the [agent-browser](https://github.com/vercel-labs/agent-browser) CLI with 
 When `selector` is omitted, the tool returns agent-browser's interactive accessibility snapshot rather than full page text.
 
 **When to use:**
+- As the first attempt when the page requires interaction
 - The page requires **clicking** before showing target content (e.g. "Load more", pagination, tab switching)
 - The page requires **filling a form** (e.g. search box, login)
 - The page requires **scrolling** to load lazy content (infinite scroll)
 - The page requires **waiting** for JS to render content (SPA)
+- Before `firecrawl_interact`; `web_browse` already performs Firecrawl fallback internally when local browser automation fails
 
 **Example flows:**
 
@@ -163,11 +166,11 @@ User: "Compare Python asyncio, Trio, and curio"
 
 ---
 
-## Firecrawl keyless tools (optional cloud escape hatches)
+## Firecrawl keyless tools (optional fallback-only cloud escape hatches)
 
 These three tools talk to [Firecrawl](https://www.firecrawl.dev) in **keyless** mode: 1,000 free credits/month, **no API key and no signup**. They require the optional `firecrawl-cli` (`npm install -g firecrawl-cli`). **Privacy:** the URL/query/page content is sent to Firecrawl's cloud.
 
-They double as the implementation of the automatic fallback: `web_search`/`web_fetch`/`web_browse` retry through Firecrawl keyless when their local backend fails (or search returns nothing). Disable all Firecrawl usage with `PI_WEB_FIRECRAWL_FALLBACK=0`.
+They double as the implementation of the automatic fallback: `web_search`/`web_fetch`/`web_browse` retry through Firecrawl keyless when their local backend fails (or search returns nothing). Do not use `firecrawl_*` as the first attempt for ordinary search, URL reading, or page interaction; use the corresponding local-first tool first unless the user explicitly asks for Firecrawl/cloud behavior. Disable all Firecrawl usage with `PI_WEB_FIRECRAWL_FALLBACK=0`.
 
 ### `firecrawl_search`
 
@@ -187,7 +190,7 @@ Cloud web search via Firecrawl keyless, with capabilities the local SearXNG tool
 }
 ```
 
-**When to use:** `web_search` failed or returned nothing; or you need `github`/`research`/`pdf` categories, images/news sources, or domain scoping that SearXNG does not provide.
+**When to use:** `web_search` failed or returned nothing; you need `github`/`research`/`pdf` categories, images/news sources, or domain scoping that SearXNG does not provide; or the user explicitly asked for Firecrawl/cloud search. Do not use it before `web_search` for ordinary discovery.
 
 ### `firecrawl_scrape`
 
@@ -203,7 +206,7 @@ Cloud single-page fetch via Firecrawl keyless (anti-bot bypass, JS rendering, PD
 }
 ```
 
-**When to use:** `web_fetch` failed on an anti-bot-protected, JavaScript-heavy, or PDF page.
+**When to use:** `web_fetch` failed on an anti-bot-protected, JavaScript-heavy, or PDF page, or the user explicitly asked for Firecrawl/cloud scraping. Do not use it before `web_fetch` for ordinary URL reading.
 
 ### `firecrawl_interact`
 
@@ -219,6 +222,6 @@ Open a URL in a live Firecrawl browser session and drive it with a natural-langu
 }
 ```
 
-**When to use:** `web_browse` cannot run (agent-browser missing / OS deps missing), or you want natural-language page interaction without hand-written CSS selectors. Write each prompt as a single, focused task.
+**When to use:** `web_browse` cannot run (agent-browser missing / OS deps missing), you need natural-language page interaction without hand-written CSS selectors, or the user explicitly asked for Firecrawl/cloud interaction. Do not use it before `web_browse` for ordinary page interaction. Write each prompt as a single, focused task.
 
 ---
