@@ -172,6 +172,20 @@ function testDoctorModeIsNonMutatingAndReportsReady(): void {
   assert.deepEqual(readJson(f.config), existing);
 }
 
+function testDoctorSkipsRuntimeChecksWhenNodeIsTooOld(): void {
+  const f = makeFixture("basic");
+  writeStub(f.bin, "node", `#!/usr/bin/env bash
+if [[ "$1" == "-v" || "$1" == "--version" ]]; then echo "v18.19.0"; exit 0; fi
+exit 1
+`);
+
+  const result = runInstaller(f, ["--doctor"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /FAIL\s+Node\.js v18\.19\.0 is too old/);
+  assert.match(result.stdout, /SKIP\s+Node-dependent runtime checks skipped/);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /node: command not found|line \d+: node/);
+}
+
 function testDoctorTreatsExplicitMissingConfigLikeRuntimeResolution(): void {
   const f = makeFixture("basic");
 
@@ -305,6 +319,7 @@ function testDoctorReportsConfiguredFirecrawlRunner(): void {
 }
 
 testDoctorModeIsNonMutatingAndReportsReady();
+testDoctorSkipsRuntimeChecksWhenNodeIsTooOld();
 testDoctorTreatsExplicitMissingConfigLikeRuntimeResolution();
 testDoctorReportsInvalidConfigDetailsFromSharedConfigSeam();
 testCustomEndpointInstallWritesToolkitConfig();

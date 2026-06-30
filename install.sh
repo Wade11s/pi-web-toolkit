@@ -267,12 +267,17 @@ port_has_http_service() {
   curl -fsSL -A "$USER_AGENT" --max-time 2 "$base/" >/dev/null 2>&1
 }
 
+node_runtime_ready() {
+  command -v node >/dev/null 2>&1 || return 1
+  node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1
+}
+
 check_node_required() {
   if ! command -v node >/dev/null 2>&1; then
     status FAIL "Node.js 22+ missing. Install Node.js 22+ before running this installer."
     return
   fi
-  if node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; then
+  if node_runtime_ready; then
     status OK "Node.js $(node -v)"
   else
     status FAIL "Node.js $(node -v) is too old; install Node.js 22+."
@@ -673,6 +678,12 @@ run_doctor() {
   check_command_required curl curl "Install curl with your OS package manager."
   check_command_required openssl OpenSSL "Install OpenSSL with your OS package manager."
   check_command_required uv uv "Install uv before installing Scrapling."
+
+  if ! node_runtime_ready; then
+    status SKIP "Node-dependent runtime checks skipped; install Node.js 22+ and rerun --doctor"
+    [ "$FAIL_COUNT" -eq 0 ] || exit 1
+    return
+  fi
 
   local config_error=""
   if config_error="$(validate_config_if_present required 2>&1)"; then
