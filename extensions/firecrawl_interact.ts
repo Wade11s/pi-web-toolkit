@@ -21,7 +21,7 @@ import {
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { interactKeyless } from "./utils/firecrawl";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { writeWithFallback } from "./utils/output-sink";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
@@ -58,7 +58,7 @@ const firecrawlInteractTool = defineTool({
     if (!params.prompt && !params.code) {
       throw new Error("firecrawl_interact requires either a prompt or code.");
     }
-    const out = await interactKeyless(
+    const out = await firecrawlKeyless.interact(
       params.url,
       { prompt: params.prompt, code: params.code, language: params.language, timeout: params.timeout },
       signal,

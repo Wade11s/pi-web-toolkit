@@ -22,13 +22,12 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import {
-  type BrowseAction,
-  buildBatchCommands,
   runAgentBrowserBatch,
   closeAgentBrowserSession,
 } from "./utils/agent-browser";
+import { planBrowserActions, type BrowserAction } from "./utils/browser-action-language";
 import { writeWithFallback } from "./utils/output-sink";
-import { interactKeyless, shouldFallbackBrowse, isFirecrawlEnabled } from "./utils/firecrawl";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
 export const WebBrowseActionSchema = Type.Object({
@@ -55,53 +54,6 @@ export const WebBrowseParamsSchema = Type.Object({
 
 export type WebBrowseInput = Static<typeof WebBrowseParamsSchema>;
 
-function formatBrowseStep(action: BrowseAction): string {
-  switch (action.type) {
-    case "click":
-      return `click ${action.selector ?? ""}`;
-    case "fill":
-      return `fill ${action.selector ?? ""} "${action.value ?? ""}"`;
-    case "type":
-      return `type ${action.selector ?? ""} "${action.value ?? ""}"`;
-    case "press":
-      return action.selector
-        ? `focus ${action.selector} + press ${action.key ?? ""}`
-        : `press ${action.key ?? ""}`;
-    case "wait":
-      return action.selector
-        ? `wait for ${action.selector}`
-        : `wait ${action.ms ?? 0}ms`;
-    case "wait_selector":
-      return `wait for ${action.selector ?? ""} (${action.state ?? "visible"})`;
-    case "scroll": {
-      const dir = action.direction ?? "down";
-      if (dir === "top" || dir === "bottom") return `scroll to ${dir}`;
-      return `scroll ${dir}${action.amount ? ` ${action.amount}px` : ""}`;
-    }
-    default:
-      return String((action as any).type);
-  }
-}
-
-function synthesizeBrowsePrompt(params: { url: string; actions: BrowseAction[]; selector?: string }): string {
-  const parts: string[] = [];
-  for (const a of params.actions) {
-    switch (a.type) {
-      case "click": parts.push(`click the element "${a.selector ?? ""}"`); break;
-      case "fill": case "type": parts.push(`type "${a.value ?? ""}" into "${a.selector ?? ""}"`); break;
-      case "press": parts.push(`press ${a.key ?? ""}`); break;
-      case "scroll": parts.push(`scroll ${a.direction ?? "down"}`); break;
-      case "wait": parts.push("wait briefly"); break;
-      case "wait_selector": parts.push(`wait for "${a.selector ?? ""}" to appear`); break;
-    }
-  }
-  const actionText = parts.length ? `Perform these actions in order: ${parts.join("; ")}. ` : "";
-  const extract = params.selector
-    ? `Then return the text content of the element matching "${params.selector}".`
-    : "Then return the main textual content of the page.";
-  return `${actionText}${extract}`;
-}
-
 const webBrowseTool = defineTool({
   name: "web_browse",
   label: "Web Browse",
@@ -124,29 +76,24 @@ const webBrowseTool = defineTool({
   async execute(toolCallId, params, signal, onUpdate) {
     let fullOutputPath: string | undefined;
     const session = `pi-web-browse-${toolCallId}`;
-    const actionCount = params.actions.length;
-    const steps = [
-      `open ${params.url}`,
-      ...(params.actions as BrowseAction[]).map(formatBrowseStep),
-      params.selector ? `get text ${params.selector}` : "snapshot",
-      "get title",
-      "get url",
-    ];
-
-    // Stream planned steps for isPartial rendering
-    onUpdate?.({
-      content: [{ type: "text", text: `Browsing ${params.url} (${actionCount} actions)...` }],
-      details: { url: params.url, steps, actionCount, selector: params.selector, headless: params.headless ?? true },
-    });
+    const actions = params.actions as BrowserAction[];
+    let actionCount = actions.length;
+    let steps: string[] = [];
+    let cloudPrompt = "";
 
     try {
-      const commands = buildBatchCommands(
-        params.url,
-        params.actions as BrowseAction[],
-        params.selector,
-      );
+      const plan = planBrowserActions({ url: params.url, actions, selector: params.selector });
+      actionCount = plan.actionCount;
+      steps = plan.steps;
+      cloudPrompt = plan.cloudPrompt;
 
-      const results = await runAgentBrowserBatch(commands, {
+      // Stream planned steps for isPartial rendering
+      onUpdate?.({
+        content: [{ type: "text", text: `Browsing ${params.url} (${actionCount} actions)...` }],
+        details: { url: params.url, steps, actionCount, selector: params.selector, headless: params.headless ?? true },
+      });
+
+      const results = await runAgentBrowserBatch(plan.localCommands, {
         session,
         headless: params.headless ?? true,
         signal,
@@ -213,10 +160,10 @@ const webBrowseTool = defineTool({
     } catch (err: any) {
       // Firecrawl keyless fallback: only on runtime failures (CLI missing /
       // batch failure), never on local validation errors (bad caller actions).
-      if (isFirecrawlEnabled() && !signal?.aborted && shouldFallbackBrowse(err as Error)) {
-        const fb = await interactKeyless(
+      if (!signal?.aborted && firecrawlKeyless.shouldFallbackBrowse(err as Error)) {
+        const fb = await firecrawlKeyless.interact(
           params.url,
-          { prompt: synthesizeBrowsePrompt({ url: params.url, actions: params.actions as BrowseAction[], selector: params.selector }), timeout: 60 },
+          { prompt: cloudPrompt, timeout: 60 },
           signal,
         );
         if (fb.ok) {

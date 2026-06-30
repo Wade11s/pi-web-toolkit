@@ -9,8 +9,10 @@ test/
 ├── README.md                ← you are here
 ├── agent-browser/
 │   └── test.ts              ← agent-browser batch JSON parser tests
+├── browser-action-language/
+│   └── test.ts              ← web_browse action validation and planning tests
 ├── config/
-│   └── test.ts              ← toolkit config precedence and validation tests
+│   └── test.ts              ← shared toolkit config precedence, validation, and write tests
 ├── content-preview/         ← extractPreview tests
 │   ├── README.md
 │   ├── test.ts
@@ -18,9 +20,13 @@ test/
 │   ├── baselines/           ← approved regression outputs
 │   └── snapshots/           ← latest outputs + summary report
 ├── firecrawl/
-│   └── test.ts              ← Firecrawl CLI wrapper pure-function tests
+│   └── test.ts              ← Firecrawl Keyless seam tests with a fake runner adapter
+├── page-extraction/
+│   └── test.ts              ← page extraction interface tests with a fake Scrapling CLI
 ├── installer/
 │   └── test.ts              ← install.sh behavior tests with stubbed commands
+├── tool-presentation/
+│   └── test.ts              ← presentation helper deletion-test contract
 ├── tool-routing/
 │   └── test.ts              ← prompt-routing contract tests
 └── web-search/

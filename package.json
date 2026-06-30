@@ -19,12 +19,15 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts && tsx test/firecrawl/test.ts && tsx test/tool-routing/test.ts && tsx test/config/test.ts && tsx test/web-search/test.ts && tsx test/installer/test.ts && bash -n install.sh",
+    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts && tsx test/browser-action-language/test.ts && tsx test/firecrawl/test.ts && tsx test/tool-routing/test.ts && tsx test/tool-presentation/test.ts && tsx test/config/test.ts && tsx test/web-search/test.ts && tsx test/page-extraction/test.ts && tsx test/installer/test.ts && bash -n install.sh",
     "test:agent-browser": "tsx test/agent-browser/test.ts",
+    "test:browser-action-language": "tsx test/browser-action-language/test.ts",
     "test:config": "tsx test/config/test.ts",
+    "test:tool-presentation": "tsx test/tool-presentation/test.ts",
     "test:firecrawl": "tsx test/firecrawl/test.ts",
     "test:installer": "tsx test/installer/test.ts && bash -n install.sh",
     "test:web-search": "tsx test/web-search/test.ts",
+    "test:page-extraction": "tsx test/page-extraction/test.ts",
     "test:approve": "tsx test/content-preview/test.ts --approve"
   },
   "devDependencies": {

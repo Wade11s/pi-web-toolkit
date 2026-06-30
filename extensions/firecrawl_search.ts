@@ -20,7 +20,7 @@ import {
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { searchKeyless, buildSearchQuery } from "./utils/firecrawl";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { writeWithFallback } from "./utils/output-sink";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
@@ -57,14 +57,15 @@ const firecrawlSearchTool = defineTool({
   parameters: FirecrawlSearchParamsSchema,
 
   async execute(_toolCallId, params, signal) {
-    const query = buildSearchQuery(params.query, params.includeDomains, params.excludeDomains);
-    const out = await searchKeyless(query, {
+    const out = await firecrawlKeyless.search(params.query, {
       limit: params.limit,
       sources: params.sources,
       categories: params.categories,
       country: params.country,
       tbs: params.tbs,
       location: params.location,
+      includeDomains: params.includeDomains,
+      excludeDomains: params.excludeDomains,
     }, signal);
 
     if (!out.ok) {

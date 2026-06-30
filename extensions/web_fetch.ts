@@ -19,13 +19,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { runScraplingWithFallback } from "./utils/scrapling";
-import { extractPreview } from "./utils/content-preview";
-import { writeWithFallback } from "./utils/output-sink";
-import { scrapeKeyless } from "./utils/firecrawl";
+import {
+  extractedPageFromContent,
+  extractPage,
+  writePageExtractionOutput,
+  type ExtractedPage,
+} from "./utils/page-extraction";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
 
 export const WebFetchParamsSchema = Type.Object({
@@ -53,32 +53,28 @@ const webFetchTool = defineTool({
   parameters: WebFetchParamsSchema,
 
   async execute(_toolCallId, params, signal) {
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-web-fetch-"));
-    const tmpFile = path.join(tmpDir, "page.md");
-    let tmpFull: string | undefined;
-
     try {
-      const { ok, stderr } = await runScraplingWithFallback(
+      const local = await extractPage(
         params.url,
-        tmpFile,
-        { selector: params.selector, stealthy: params.stealthy, noGetFallback: params.stealthy },
+        {
+          selector: params.selector,
+          stealthy: params.stealthy,
+          noGetFallback: params.stealthy,
+        },
         signal,
       );
 
-      let content: string;
-      let bytes: number;
+      let page: ExtractedPage;
       let viaFirecrawl = false;
 
-      if (ok) {
-        content = await fs.promises.readFile(tmpFile, "utf-8");
-        bytes = (await fs.promises.stat(tmpFile)).size;
+      if (local.ok) {
+        page = local;
       } else {
         // Local scrapling failed — try the Firecrawl keyless fallback.
-        const localError = `Failed to fetch ${params.url}\n\nscrapling error:\n${stderr}`;
-        const fb = await scrapeKeyless(params.url, {}, signal);
+        const localError = `Failed to fetch ${params.url}\n\nscrapling error:\n${local.error}`;
+        const fb = await firecrawlKeyless.scrape(params.url, {}, signal);
         if (fb.ok) {
-          content = fb.content;
-          bytes = fb.bytes;
+          page = extractedPageFromContent(params.url, fb.content, { bytes: fb.bytes });
           viaFirecrawl = true;
         } else {
           // Graceful skip (CLI absent / IP flagged / rate-limited / disabled):
@@ -87,30 +83,27 @@ const webFetchTool = defineTool({
         }
       }
 
-      const preview = extractPreview(content, 500);
       const viaTag = viaFirecrawl ? "\n(via Firecrawl keyless fallback)" : "";
-      const rawText = `Fetched: ${params.url}${viaTag}\nSize: ${bytes} bytes\n\n---\n\n${content}`;
-      const sink = await writeWithFallback(rawText, {
+      const rawText = `Fetched: ${params.url}${viaTag}\nSize: ${page.bytes} bytes\n\n---\n\n${page.content}`;
+      const sink = await writePageExtractionOutput(rawText, {
         tmpPrefix: "pi-web-fetch-full-",
       });
-      tmpFull = sink.fullOutputPath;
 
       return {
         content: [{ type: "text", text: sink.text }],
         details: {
           url: params.url,
-          bytes,
-          fullOutputPath: tmpFull,
-          preview,
+          bytes: page.bytes,
+          fullOutputPath: sink.fullOutputPath,
+          preview: page.preview,
           selector: params.selector,
           stealthy: params.stealthy,
           viaFirecrawl,
         },
       };
-    } catch (err: any) {
-      throw new Error(`Error fetching ${params.url}: ${err.message ?? err}`);
-    } finally {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Error fetching ${params.url}: ${message}`);
     }
   },
 

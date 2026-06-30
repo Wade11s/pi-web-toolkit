@@ -20,43 +20,37 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { runScraplingWithFallback } from "./utils/scrapling";
-import { extractPreview } from "./utils/content-preview";
-import { writeWithFallback } from "./utils/output-sink";
+import { extractPage, writePageExtractionOutput } from "./utils/page-extraction";
 import { abbreviateUrl, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
-interface FetchTask {
+interface FetchResult {
   url: string;
-  tmpFile: string;
+  content: string;
+  size: number;
+  ok: boolean;
+  preview?: string;
+  error?: string;
 }
 
 async function fetchOne(
-  task: FetchTask,
+  url: string,
   selector: string | undefined,
   stealthy: boolean,
   signal?: AbortSignal,
-): Promise<{ url: string; content: string; size: number; ok: boolean; error?: string }> {
-  const { ok: fetchOk, stderr } = await runScraplingWithFallback(
-    task.url,
-    task.tmpFile,
-    { selector, stealthy },
-    signal,
-  );
+): Promise<FetchResult> {
+  const result = await extractPage(url, { selector, stealthy, previewChars: 200 }, signal);
 
-  if (!fetchOk) {
-    return { url: task.url, content: "", size: 0, ok: false, error: stderr };
+  if (!result.ok) {
+    return { url, content: "", size: 0, ok: false, error: result.error };
   }
 
-  try {
-    const content = await fs.promises.readFile(task.tmpFile, "utf-8");
-    const stats = await fs.promises.stat(task.tmpFile);
-    return { url: task.url, content, size: stats.size, ok: true };
-  } catch (err: any) {
-    return { url: task.url, content: "", size: 0, ok: false, error: err.message };
-  }
+  return {
+    url,
+    content: result.content,
+    size: result.bytes,
+    ok: true,
+    preview: result.preview,
+  };
 }
 
 async function mapWithConcurrencyLimit<TIn, TOut>(
@@ -121,17 +115,11 @@ const webBatchFetchTool = defineTool({
   parameters: WebBatchFetchParamsSchema,
 
   async execute(_toolCallId, params, signal, onUpdate) {
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-batch-"));
-    const tasks: FetchTask[] = params.urls.map((url, i) => ({
-      url,
-      tmpFile: path.join(tmpDir, `page-${i}.md`),
-    }));
-    let fullOutputPath: string | undefined;
     const concurrency = Math.floor(Math.min(5, Math.max(1, params.max_concurrency ?? 3)));
 
     // Progress tracking for live UI updates
-    const progressItems = tasks.map((t) => ({
-      url: t.url,
+    const progressItems = params.urls.map((url) => ({
+      url,
       status: "fetching" as "fetching" | "done" | "error",
       size: 0,
       error: "",
@@ -142,10 +130,10 @@ const webBatchFetchTool = defineTool({
       const succeeded = progressItems.filter((p) => p.status === "done").length;
       const failed = progressItems.filter((p) => p.status === "error").length;
       onUpdate?.({
-        content: [{ type: "text", text: `Fetching ${tasks.length} pages (${completed}/${tasks.length})...` }],
+        content: [{ type: "text", text: `Fetching ${params.urls.length} pages (${completed}/${params.urls.length})...` }],
         details: {
           progress: {
-            total: tasks.length,
+            total: params.urls.length,
             completed,
             succeeded,
             failed,
@@ -159,10 +147,10 @@ const webBatchFetchTool = defineTool({
 
     try {
       const results = await mapWithConcurrencyLimit(
-        tasks,
+        params.urls,
         concurrency,
-        (task, index) => {
-          return fetchOne(task, params.selector, params.stealthy ?? false, signal).then((res) => {
+        (url, index) => {
+          return fetchOne(url, params.selector, params.stealthy ?? false, signal).then((res) => {
             progressItems[index].status = res.ok ? "done" : "error";
             progressItems[index].size = res.size;
             progressItems[index].error = res.error || "";
@@ -192,10 +180,9 @@ const webBatchFetchTool = defineTool({
       }
 
       const rawText = lines.join("\n");
-      const sink = await writeWithFallback(rawText, {
+      const sink = await writePageExtractionOutput(rawText, {
         tmpPrefix: "pi-web-batch-",
       });
-      fullOutputPath = sink.fullOutputPath;
 
       return {
         content: [{ type: "text", text: sink.text }],
@@ -207,22 +194,15 @@ const webBatchFetchTool = defineTool({
             url: r.url,
             ok: r.ok,
             size: r.size,
-            preview: r.ok ? extractPreview(r.content, 200) : undefined,
+            preview: r.preview,
             error: r.error,
           })),
-          fullOutputPath,
+          fullOutputPath: sink.fullOutputPath,
         },
       };
-    } catch (err: any) {
-      throw new Error(`Batch fetch failed: ${err.message ?? err}`);
-    } finally {
-      // Cleanup tmp files
-      try {
-        for (const task of tasks) {
-          try { fs.unlinkSync(task.tmpFile); } catch { /* ignore */ }
-        }
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      } catch { /* ignore */ }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Batch fetch failed: ${message}`);
     }
   },
 

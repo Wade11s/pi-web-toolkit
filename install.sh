@@ -21,6 +21,14 @@ SEARXNG_PORT="$DEFAULT_SEARXNG_PORT"
 
 CONFIG_FILE="${PI_WEB_TOOLKIT_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-web-toolkit/config.json}"
 CONFIG_DIR="$(dirname "$CONFIG_FILE")"
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" >/dev/null 2>&1 && pwd -P || pwd)"
+CONFIG_CORE="${PI_WEB_TOOLKIT_CONFIG_CORE:-$SCRIPT_DIR/extensions/utils/config-core.cjs}"
+CONFIG_CORE_URL="${PI_WEB_TOOLKIT_CONFIG_CORE_URL:-https://raw.githubusercontent.com/Wade11s/pi-web-toolkit/main/extensions/utils/config-core.cjs}"
+if [ ! -f "$CONFIG_CORE" ] && [ -f "$(pwd)/extensions/utils/config-core.cjs" ]; then
+  CONFIG_CORE="$(pwd)/extensions/utils/config-core.cjs"
+fi
+CONFIG_CORE_FETCHED=""
 
 SELECTED_SEARXNG_URL=""
 SCRAPLING_BIN=""
@@ -128,6 +136,25 @@ resolve_executable_path() {
   return 1
 }
 
+ensure_config_core() {
+  if [ -f "$CONFIG_CORE" ]; then return 0; fi
+  if [ -n "$CONFIG_CORE_FETCHED" ] && [ -f "$CONFIG_CORE_FETCHED" ]; then
+    CONFIG_CORE="$CONFIG_CORE_FETCHED"
+    return 0
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    local fetched
+    fetched="$(mktemp)"
+    if curl -fsSL -A "$USER_AGENT" "$CONFIG_CORE_URL" -o "$fetched" 2>/dev/null; then
+      CONFIG_CORE_FETCHED="$fetched"
+      CONFIG_CORE="$fetched"
+      return 0
+    fi
+    rm -f "$fetched"
+  fi
+  die "Toolkit config core not found: $CONFIG_CORE. Run from a checkout or set PI_WEB_TOOLKIT_CONFIG_CORE."
+}
+
 parse_args() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -174,102 +201,44 @@ parse_args() {
 config_get() {
   local dotted_path="$1"
   [ -f "$CONFIG_FILE" ] || return 1
-  node - "$CONFIG_FILE" "$dotted_path" <<'NODE'
-const fs = require('fs');
-const file = process.argv[2];
-const dotted = process.argv[3];
-let cfg;
-try {
-  cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-} catch (err) {
-  console.error(`Invalid toolkit config at ${file}: ${err.message}`);
-  process.exit(2);
-}
-let cur = cfg;
-for (const part of dotted.split('.')) {
-  if (!cur || typeof cur !== 'object' || !(part in cur)) process.exit(1);
-  cur = cur[part];
-}
-if (cur === undefined || cur === null) process.exit(1);
-if (typeof cur === 'object') console.log(JSON.stringify(cur));
-else console.log(String(cur));
-NODE
+  ensure_config_core
+  node "$CONFIG_CORE" raw-get "$CONFIG_FILE" "$dotted_path"
 }
 
 validate_config_if_present() {
-  [ -f "$CONFIG_FILE" ] || return 0
-  node - "$CONFIG_FILE" <<'NODE'
-const fs = require('fs');
-const file = process.argv[2];
-try {
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('expected a JSON object');
-  }
-  const optionalString = (value, key) => {
-    if (value !== undefined && typeof value !== 'string') throw new Error(`${key} must be a string`);
-  };
-  optionalString(parsed.searxngUrl, 'searxngUrl');
-  if (parsed.firecrawlFallback !== undefined && typeof parsed.firecrawlFallback !== 'boolean') {
-    throw new Error('firecrawlFallback must be a boolean');
-  }
-  if (parsed.firecrawlRunner !== undefined && !['installed', 'npx', 'bunx'].includes(parsed.firecrawlRunner)) {
-    throw new Error('firecrawlRunner must be one of: installed, npx, bunx');
-  }
-  if (parsed.commands !== undefined) {
-    if (!parsed.commands || typeof parsed.commands !== 'object' || Array.isArray(parsed.commands)) {
-      throw new Error('commands must be an object');
-    }
-    optionalString(parsed.commands.scrapling, 'commands.scrapling');
-    optionalString(parsed.commands.agentBrowser, 'commands.agentBrowser');
-    optionalString(parsed.commands.firecrawl, 'commands.firecrawl');
-  }
-} catch (err) {
-  console.error(`Invalid toolkit config at ${file}: ${err.message}`);
-  process.exit(1);
-}
-NODE
+  local missing_mode="${1:-optional}"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    if [ "$missing_mode" = "required" ] && [ -n "${PI_WEB_TOOLKIT_CONFIG:-}" ]; then
+      printf 'Toolkit config file not found: %s\n' "$CONFIG_FILE" >&2
+      return 1
+    fi
+    return 0
+  fi
+  ensure_config_core
+  node "$CONFIG_CORE" validate "$CONFIG_FILE"
 }
 
 runtime_searxng_url() {
-  if [ -n "${SEARXNG_URL:-}" ]; then normalize_url "$SEARXNG_URL"; return 0; fi
-  local cfg_url=""
-  cfg_url="$(config_get searxngUrl 2>/dev/null || true)"
-  if [ -n "$cfg_url" ]; then normalize_url "$cfg_url"; return 0; fi
-  printf '%s' "http://localhost:8080"
+  ensure_config_core
+  node "$CONFIG_CORE" resolve "$CONFIG_FILE" searxng-url
 }
 
 runtime_firecrawl_enabled() {
-  if [ -n "${PI_WEB_FIRECRAWL_FALLBACK+x}" ]; then
-    local v
-    v="$(printf '%s' "$PI_WEB_FIRECRAWL_FALLBACK" | tr '[:upper:]' '[:lower:]')"
-    case "$v" in 0|false|no|off) return 1 ;; *) return 0 ;; esac
-  fi
-  local cfg_value=""
-  cfg_value="$(config_get firecrawlFallback 2>/dev/null || true)"
-  case "$cfg_value" in false|0|no|off) return 1 ;; *) return 0 ;; esac
+  local enabled
+  ensure_config_core
+  enabled="$(node "$CONFIG_CORE" resolve "$CONFIG_FILE" firecrawl-enabled)" || return 1
+  [ "$enabled" = "true" ]
 }
 
 runtime_command() {
   local key="$1"
-  local env_name="$2"
-  local default_name="$3"
-  local env_value="${!env_name:-}"
-  if [ -n "$env_value" ]; then printf '%s' "$env_value"; return 0; fi
-  local cfg_value=""
-  cfg_value="$(config_get "commands.$key" 2>/dev/null || true)"
-  if [ -n "$cfg_value" ]; then printf '%s' "$cfg_value"; return 0; fi
-  printf '%s' "$default_name"
+  ensure_config_core
+  node "$CONFIG_CORE" resolve "$CONFIG_FILE" command "$key"
 }
 
 runtime_firecrawl_runner() {
-  local env_value="${PI_WEB_FIRECRAWL_RUNNER:-}"
-  if [ -n "$env_value" ]; then
-    case "$env_value" in installed|npx|bunx) printf '%s' "$env_value"; return 0 ;; *) printf '%s' "installed"; return 0 ;; esac
-  fi
-  local cfg_value=""
-  cfg_value="$(config_get firecrawlRunner 2>/dev/null || true)"
-  case "$cfg_value" in installed|npx|bunx) printf '%s' "$cfg_value" ;; *) printf '%s' "installed" ;; esac
+  ensure_config_core
+  node "$CONFIG_CORE" resolve "$CONFIG_FILE" firecrawl-runner
 }
 
 command_is_available() {
@@ -298,12 +267,17 @@ port_has_http_service() {
   curl -fsSL -A "$USER_AGENT" --max-time 2 "$base/" >/dev/null 2>&1
 }
 
+node_runtime_ready() {
+  command -v node >/dev/null 2>&1 || return 1
+  node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1
+}
+
 check_node_required() {
   if ! command -v node >/dev/null 2>&1; then
     status FAIL "Node.js 22+ missing. Install Node.js 22+ before running this installer."
     return
   fi
-  if node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; then
+  if node_runtime_ready; then
     status OK "Node.js $(node -v)"
   else
     status FAIL "Node.js $(node -v) is too old; install Node.js 22+."
@@ -635,37 +609,25 @@ ensure_firecrawl() {
 }
 
 write_toolkit_config() {
-  node - "$CONFIG_FILE" "$SELECTED_SEARXNG_URL" "$SCRAPLING_BIN" "$AGENT_BROWSER_BIN" "$FIRECRAWL_BIN" "$FIRECRAWL_FALLBACK" "$FIRECRAWL_RUNNER" <<'NODE'
-const fs = require('fs');
-const path = require('path');
-const [file, searxngUrl, scrapling, agentBrowser, firecrawl, fallback, runner] = process.argv.slice(2);
-let cfg = {};
-if (fs.existsSync(file)) {
-  try {
-    cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (err) {
-    console.error(`Invalid toolkit config at ${file}: ${err.message}`);
-    process.exit(1);
-  }
-}
-if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) cfg = {};
-if (searxngUrl) cfg.searxngUrl = searxngUrl.replace(/\/+$/, '');
-cfg.commands = cfg.commands && typeof cfg.commands === 'object' && !Array.isArray(cfg.commands) ? cfg.commands : {};
-if (scrapling) cfg.commands.scrapling = scrapling;
-if (agentBrowser) cfg.commands.agentBrowser = agentBrowser;
-if (firecrawl) cfg.commands.firecrawl = firecrawl;
+  local update_json
+  update_json="$(node - "$SELECTED_SEARXNG_URL" "$SCRAPLING_BIN" "$AGENT_BROWSER_BIN" "$FIRECRAWL_BIN" "$FIRECRAWL_FALLBACK" "$FIRECRAWL_RUNNER" <<'NODE'
+const [searxngUrl, scrapling, agentBrowser, firecrawl, fallback, runner] = process.argv.slice(2);
+const update = { commands: {} };
+if (searxngUrl) update.searxngUrl = searxngUrl;
+if (scrapling) update.commands.scrapling = scrapling;
+if (agentBrowser) update.commands.agentBrowser = agentBrowser;
+if (firecrawl) update.commands.firecrawl = firecrawl;
 if (fallback === 'false') {
-  cfg.firecrawlFallback = false;
-  delete cfg.firecrawlRunner;
-  delete cfg.commands.firecrawl;
+  update.firecrawlFallback = false;
 } else if (fallback === 'true') {
-  cfg.firecrawlFallback = true;
-  cfg.firecrawlRunner = runner || 'installed';
-  if (cfg.firecrawlRunner !== 'installed') delete cfg.commands.firecrawl;
+  update.firecrawlFallback = true;
+  update.firecrawlRunner = runner || 'installed';
 }
-fs.mkdirSync(path.dirname(file), { recursive: true });
-fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+console.log(JSON.stringify(update));
 NODE
+)"
+  ensure_config_core
+  node "$CONFIG_CORE" write "$CONFIG_FILE" "$update_json"
 }
 
 install_pi_package() {
@@ -717,10 +679,23 @@ run_doctor() {
   check_command_required openssl OpenSSL "Install OpenSSL with your OS package manager."
   check_command_required uv uv "Install uv before installing Scrapling."
 
-  if validate_config_if_present >/dev/null 2>&1; then
+  if ! node_runtime_ready; then
+    status SKIP "Node-dependent runtime checks skipped; install Node.js 22+ and rerun --doctor"
+    [ "$FAIL_COUNT" -eq 0 ] || exit 1
+    return
+  fi
+
+  local config_error=""
+  if config_error="$(validate_config_if_present required 2>&1)"; then
     if [ -f "$CONFIG_FILE" ]; then status OK "toolkit config $CONFIG_FILE"; else status SKIP "toolkit config not found; defaults/env will be used"; fi
   else
-    status FAIL "toolkit config invalid: $CONFIG_FILE"
+    if printf '%s' "$config_error" | grep -q 'Toolkit config file not found'; then
+      status FAIL "toolkit config missing: $CONFIG_FILE"
+    else
+      status FAIL "toolkit config invalid: $CONFIG_FILE"
+    fi
+    [ -z "$config_error" ] || printf '%s\n' "$config_error" >&2
+    exit 1
   fi
 
   local searxng

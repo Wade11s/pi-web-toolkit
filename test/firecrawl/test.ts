@@ -1,385 +1,230 @@
 /**
- * Firecrawl CLI wrapper regression tests.
+ * Firecrawl Keyless behavior tests.
  *
- * These tests avoid the network and the firecrawl CLI itself. They lock down
- * the pure boundary functions: argument builders, output parsers, failure
- * classification, keyless-eligibility, and fallback decisions.
+ * These tests exercise the same Firecrawl Keyless seam used by tools. They use
+ * a fake runner adapter to avoid network/CLI calls while keeping parser,
+ * failure classification, fallback decisions, and interact cleanup behind the
+ * module interface.
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
-  buildScrapeArgs,
-  parseScrapeOutput,
-  classifyFirecrawlFailure,
-  isFirecrawlEnabled,
-  buildSearchArgs,
-  buildSearchQuery,
-  parseSearchOutput,
-  shouldFallbackSearch,
-  buildInteractArgs,
-  buildFirecrawlCliInvocation,
-  buildInteractStopArgs,
-  parseInteractOutput,
-  shouldFallbackBrowse,
-  type FirecrawlScrapeOptions,
+  createFirecrawlKeyless,
+  type FirecrawlKeylessRunRequest,
+  type FirecrawlKeylessRunner,
+  type FirecrawlRunnerResult,
 } from "../../extensions/utils/firecrawl";
 
-// --- scrape argument builder -------------------------------------------
+type Handler = (request: FirecrawlKeylessRunRequest, index: number) => Promise<FirecrawlRunnerResult> | FirecrawlRunnerResult;
 
-function testScrapeArgsBasic(): void {
-  const args = buildScrapeArgs("https://example.com", {});
-  assert.deepEqual(args, [
-    "scrape",
-    "https://example.com",
-    "--format",
-    "markdown",
-    "--json",
-    "--only-main-content",
-  ]);
+function jsonStdout(value: unknown): FirecrawlRunnerResult {
+  return { stdout: JSON.stringify(value), stderr: "", exitCode: 0 };
 }
 
-function testScrapeArgsOpts(): void {
-  const args = buildScrapeArgs("https://example.com", {
-    waitFor: 3000,
-    includeTags: ["article", "main"],
-    excludeTags: ["nav"],
-    onlyMainContent: false,
-  });
-  assert.deepEqual(args, [
-    "scrape",
-    "https://example.com",
-    "--format",
-    "markdown",
-    "--json",
-    "--wait-for",
-    "3000",
-    "--include-tags",
-    "article,main",
-    "--exclude-tags",
-    "nav",
-  ]);
-}
-
-testScrapeArgsBasic();
-testScrapeArgsOpts();
-
-// --- scrape output parser ---------------------------------------------
-
-function testParseScrapeJson(): void {
-  const stdout = JSON.stringify({
-    markdown: "# Hello",
-    metadata: { scrapeId: "abc-123", title: "Hello", sourceURL: "https://example.com" },
-  });
-  const out = parseScrapeOutput(stdout, "https://example.com");
-  assert.equal(out.ok, true);
-  assert.equal(out.content, "# Hello");
-  assert.equal(out.scrapeId, "abc-123");
-  assert.equal(out.title, "Hello");
-  assert.equal(out.url, "https://example.com");
-  assert.equal(out.bytes, "# Hello".length);
-}
-
-function testParseScrapeRawMarkdown(): void {
-  // If the CLI ever emits raw markdown instead of JSON, treat it as content.
-  const stdout = "# Just markdown\n\nNo JSON here.";
-  const out = parseScrapeOutput(stdout, "https://example.com");
-  assert.equal(out.ok, true);
-  assert.equal(out.content, stdout);
-  assert.equal(out.scrapeId, undefined);
-}
-
-function testParseScrapeEmpty(): void {
-  const out = parseScrapeOutput("", "https://example.com");
-  assert.equal(out.ok, false);
-  assert.equal(out.failure?.kind, "hard-error");
-}
-
-testParseScrapeJson();
-testParseScrapeRawMarkdown();
-testParseScrapeEmpty();
-
-// --- failure classification -------------------------------------------
-
-function testClassifyIpSuspicious(): void {
-  const f = classifyFirecrawlFailure(
-    "your IP address looks suspicious, so Firecrawl can't be used without an API key",
-    403,
-  );
-  assert.equal(f.kind, "graceful-skip");
-}
-
-function testClassifyRateLimit(): void {
-  const f = classifyFirecrawlFailure("Rate limit exceeded", 429);
-  assert.equal(f.kind, "graceful-skip");
-}
-
-function testClassifyNotInstalled(): void {
-  const f = classifyFirecrawlFailure("firecrawl is not installed");
-  assert.equal(f.kind, "graceful-skip");
-}
-
-function testClassifyHardError(): void {
-  const f = classifyFirecrawlFailure("Something went wrong on our end", 500);
-  assert.equal(f.kind, "hard-error");
-}
-
-testClassifyIpSuspicious();
-testClassifyRateLimit();
-testClassifyNotInstalled();
-testClassifyHardError();
-
-// --- keyless-eligibility (opt-out toggle) ----------------------------
-
-function withIsolatedToolkitConfig(fn: () => void): void {
-  const prevConfig = process.env.PI_WEB_TOOLKIT_CONFIG;
-  process.env.PI_WEB_TOOLKIT_CONFIG = join(mkdtempSync(join(tmpdir(), "pi-firecrawl-test-")), "config.json");
-  writeFileSync(process.env.PI_WEB_TOOLKIT_CONFIG, "{}\n");
-  try {
-    fn();
-  } finally {
-    if (prevConfig === undefined) delete process.env.PI_WEB_TOOLKIT_CONFIG;
-    else process.env.PI_WEB_TOOLKIT_CONFIG = prevConfig;
-  }
-}
-
-function testFirecrawlEnabledByDefault(): void {
-  withIsolatedToolkitConfig(() => {
-    const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
-    delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
-    assert.equal(isFirecrawlEnabled(), true);
-    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
-    else process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
-  });
-}
-
-function testFirecrawlOptOut(): void {
-  withIsolatedToolkitConfig(() => {
-    const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
-    for (const v of ["0", "false", "no", "off"]) {
-      process.env.PI_WEB_FIRECRAWL_FALLBACK = v;
-      assert.equal(isFirecrawlEnabled(), false, `opt-out value ${v} should disable`);
-    }
-    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
-    else process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
-  });
-}
-
-testFirecrawlEnabledByDefault();
-testFirecrawlOptOut();
-
-// --- runner command resolution ----------------------------------------
-
-function testInstalledRunnerInvocation(): void {
-  withIsolatedToolkitConfig(() => {
-    const prev = process.env.FIRECRAWL_BIN;
-    process.env.FIRECRAWL_BIN = "/custom/firecrawl";
-    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
-      command: "/custom/firecrawl",
-      args: ["search", "pi"],
-    });
-    if (prev === undefined) delete process.env.FIRECRAWL_BIN;
-    else process.env.FIRECRAWL_BIN = prev;
-  });
-}
-
-function testNpxRunnerInvocation(): void {
-  withIsolatedToolkitConfig(() => {
-    const prev = process.env.PI_WEB_FIRECRAWL_RUNNER;
-    process.env.PI_WEB_FIRECRAWL_RUNNER = "npx";
-    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
-      command: "npx",
-      args: ["-y", "firecrawl-cli", "search", "pi"],
-    });
-    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_RUNNER;
-    else process.env.PI_WEB_FIRECRAWL_RUNNER = prev;
-  });
-}
-
-function testBunxRunnerInvocation(): void {
-  withIsolatedToolkitConfig(() => {
-    const prev = process.env.PI_WEB_FIRECRAWL_RUNNER;
-    process.env.PI_WEB_FIRECRAWL_RUNNER = "bunx";
-    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
-      command: "bunx",
-      args: ["firecrawl-cli", "search", "pi"],
-    });
-    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_RUNNER;
-    else process.env.PI_WEB_FIRECRAWL_RUNNER = prev;
-  });
-}
-
-testInstalledRunnerInvocation();
-testNpxRunnerInvocation();
-testBunxRunnerInvocation();
-
-// --- search argument builder ------------------------------------------
-
-function testSearchArgsBasic(): void {
-  const args = buildSearchArgs("firecrawl keyless", {});
-  assert.deepEqual(args, ["search", "firecrawl keyless", "--json"]);
-}
-
-function testSearchArgsOpts(): void {
-  const args = buildSearchArgs("rust async", {
-    limit: 5,
-    sources: ["web", "news"],
-    categories: ["github", "research"],
-    country: "DE",
-    tbs: "qdr:w",
-  });
-  assert.ok(args.includes("--limit"));
-  assert.equal(args[args.indexOf("--limit") + 1], "5");
-  assert.ok(args.includes("--sources"));
-  assert.equal(args[args.indexOf("--sources") + 1], "web,news");
-  assert.ok(args.includes("--categories"));
-  assert.equal(args[args.indexOf("--categories") + 1], "github,research");
-  assert.equal(args[args.indexOf("--country") + 1], "DE");
-  assert.equal(args[args.indexOf("--tbs") + 1], "qdr:w");
-}
-
-// --- search query synthesis (domain filters) -------------------------
-
-function testSearchQueryIncludeDomains(): void {
-  const q = buildSearchQuery("web scraping", ["firecrawl.dev"], undefined);
-  assert.equal(q, 'web scraping (site:firecrawl.dev)');
-}
-
-function testSearchQueryExcludeDomains(): void {
-  const q = buildSearchQuery("web scraping", undefined, ["example.com"]);
-  assert.equal(q, "web scraping -site:example.com");
-}
-
-function testSearchQueryNoDomains(): void {
-  assert.equal(buildSearchQuery("plain", undefined, undefined), "plain");
-}
-
-// --- search output parser ---------------------------------------------
-
-function testParseSearchEnvelope(): void {
-  const stdout = JSON.stringify({
-    success: true,
-    data: {
-      web: [
-        { title: "Firecrawl", url: "https://firecrawl.dev", description: "Web data API" },
-      ],
+function fakeRunner(handler: Handler): { runner: FirecrawlKeylessRunner; requests: FirecrawlKeylessRunRequest[] } {
+  const requests: FirecrawlKeylessRunRequest[] = [];
+  return {
+    requests,
+    runner: {
+      async run(request) {
+        requests.push(request);
+        return handler(request, requests.length - 1);
+      },
     },
-    id: "search-1",
-    creditsUsed: 2,
+  };
+}
+
+async function testSearchThroughKeylessSeam(): Promise<void> {
+  const { runner, requests } = fakeRunner((request) => {
+    assert.equal(request.type, "search");
+    if (request.type !== "search") throw new Error("expected search request");
+    assert.equal(request.query, "web scraping (site:firecrawl.dev)");
+    assert.equal(request.options.limit, 5);
+    return jsonStdout({
+      success: true,
+      data: {
+        web: [
+          { title: "Firecrawl", url: "https://firecrawl.dev", description: "Web data API" },
+        ],
+      },
+      id: "search-1",
+      creditsUsed: 2,
+    });
   });
-  const out = parseSearchOutput(stdout);
+
+  const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+  const out = await client.search("web scraping", { limit: 5, includeDomains: ["firecrawl.dev"] });
+
   assert.equal(out.ok, true);
   assert.equal(out.results.length, 1);
   assert.equal(out.results[0].title, "Firecrawl");
   assert.equal(out.results[0].url, "https://firecrawl.dev");
   assert.equal(out.creditsUsed, 2);
   assert.equal(out.searchId, "search-1");
+  assert.deepEqual(requests.map((r) => r.type), ["search"]);
 }
 
-function testParseSearchEmpty(): void {
-  const stdout = JSON.stringify({ success: true, data: { web: [] }, id: "search-2" });
-  const out = parseSearchOutput(stdout);
-  assert.equal(out.ok, true);
-  assert.equal(out.results.length, 0);
-}
-
-function testParseSearchHardError(): void {
-  const out = parseSearchOutput("");
-  assert.equal(out.ok, false);
-  assert.equal(out.failure?.kind, "hard-error");
-}
-
-// --- web_search fallback decision ------------------------------------
-
-function testShouldFallbackOnError(): void {
-  assert.equal(shouldFallbackSearch(true, 0), true); // no error but zero results
-}
-
-function testShouldNotFallbackOnResults(): void {
-  assert.equal(shouldFallbackSearch(true, 5), false);
-}
-
-function testShouldFallbackOnLocalError(): void {
-  assert.equal(shouldFallbackSearch(false, 0), true);
-}
-
-testSearchArgsBasic();
-testSearchArgsOpts();
-testSearchQueryIncludeDomains();
-testSearchQueryExcludeDomains();
-testSearchQueryNoDomains();
-testParseSearchEnvelope();
-testParseSearchEmpty();
-testParseSearchHardError();
-testShouldFallbackOnError();
-testShouldNotFallbackOnResults();
-testShouldFallbackOnLocalError();
-
-// --- interact argument builder ---------------------------------------
-
-function testInteractArgsPrompt(): void {
-  const args = buildInteractArgs("scrape-1", { prompt: "Click the pricing tab" });
-  assert.deepEqual(args, ["interact", "-p", "Click the pricing tab", "-s", "scrape-1", "--json"]);
-}
-
-function testInteractArgsCode(): void {
-  const args = buildInteractArgs("scrape-2", { code: "await page.title()", language: "python" });
-  assert.deepEqual(args, ["interact", "-c", "await page.title()", "-s", "scrape-2", "--python", "--json"]);
-}
-
-function testInteractStopArgs(): void {
-  assert.deepEqual(buildInteractStopArgs("scrape-1"), ["interact", "stop", "scrape-1", "--json"]);
-}
-
-// --- interact output parser ------------------------------------------
-
-function testParseInteractOutput(): void {
-  const stdout = JSON.stringify({
-    success: true,
-    output: "The price is $20.",
-    liveViewUrl: "https://liveview.firecrawl.dev/x",
+async function testScrapeThroughKeylessSeam(): Promise<void> {
+  const { runner } = fakeRunner((request) => {
+    assert.equal(request.type, "scrape");
+    if (request.type !== "scrape") throw new Error("expected scrape request");
+    assert.equal(request.url, "https://example.com");
+    assert.equal(request.options.onlyMainContent, false);
+    return jsonStdout({
+      markdown: "# Hello",
+      metadata: { scrapeId: "scrape-1", title: "Hello", sourceURL: "https://example.com" },
+    });
   });
-  const out = parseInteractOutput(stdout);
+
+  const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+  const out = await client.scrape("https://example.com", { onlyMainContent: false });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.content, "# Hello");
+  assert.equal(out.scrapeId, "scrape-1");
+  assert.equal(out.title, "Hello");
+  assert.equal(out.bytes, "# Hello".length);
+}
+
+async function testGracefulSkipFailures(): Promise<void> {
+  const disabledRunner = fakeRunner(() => {
+    throw new Error("runner should not be called when disabled");
+  });
+  const disabled = createFirecrawlKeyless({ runner: disabledRunner.runner, isEnabled: () => false });
+  const disabledOut = await disabled.scrape("https://example.com", {});
+  assert.equal(disabledOut.ok, false);
+  assert.equal(disabledOut.failure?.kind, "graceful-skip");
+  assert.equal(disabledRunner.requests.length, 0);
+
+  const cases: Array<{ name: string; result: Handler }> = [
+    {
+      name: "missing CLI",
+      result: () => { throw new Error("firecrawl is not installed"); },
+    },
+    {
+      name: "suspicious IP",
+      result: () => ({ stdout: "", stderr: "your IP address looks suspicious", exitCode: 403 }),
+    },
+    {
+      name: "rate limit",
+      result: () => ({ stdout: "", stderr: "Rate limit exceeded", exitCode: 429 }),
+    },
+  ];
+
+  for (const c of cases) {
+    const { runner } = fakeRunner(c.result);
+    const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+    const out = await client.scrape(`https://example.com/${c.name}`, {});
+    assert.equal(out.ok, false, c.name);
+    assert.equal(out.failure?.kind, "graceful-skip", c.name);
+  }
+}
+
+function testFallbackDecisionsThroughKeylessSeam(): void {
+  const client = createFirecrawlKeyless({
+    runner: fakeRunner(() => jsonStdout({ data: { web: [] } })).runner,
+    isEnabled: () => true,
+  });
+
+  assert.equal(client.shouldFallbackSearch(true, 0), true);
+  assert.equal(client.shouldFallbackSearch(true, 5), false);
+  assert.equal(client.shouldFallbackSearch(false, 0), true);
+
+  assert.equal(client.shouldFallbackBrowse(new Error("agent-browser is not installed")), true);
+  assert.equal(client.shouldFallbackBrowse(new Error("Browser action failed: click — timeout")), true);
+  assert.equal(client.shouldFallbackBrowse(new Error('Action "click" requires non-empty selector')), false);
+  assert.equal(client.shouldFallbackBrowse(new Error('Action "wait" requires non-negative integer ms')), false);
+  assert.equal(client.shouldFallbackBrowse(new Error("Unsupported browser action: foo")), false);
+}
+
+async function testInteractThroughKeylessSeam(): Promise<void> {
+  const { runner, requests } = fakeRunner((request) => {
+    if (request.type === "scrape") {
+      return jsonStdout({ markdown: "# Page", metadata: { scrapeId: "scrape-ok" } });
+    }
+    if (request.type === "interact") {
+      assert.equal(request.scrapeId, "scrape-ok");
+      assert.equal(request.options.prompt, "Click pricing");
+      return jsonStdout({ success: true, output: "The price is $20.", liveViewUrl: "https://live.example", creditsUsed: 3 });
+    }
+    if (request.type === "stopInteract") {
+      assert.equal(request.scrapeId, "scrape-ok");
+      return jsonStdout({ success: true });
+    }
+    throw new Error(`unexpected request ${request.type}`);
+  });
+
+  const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+  const out = await client.interact("https://example.com", { prompt: "Click pricing" });
+
   assert.equal(out.ok, true);
   assert.equal(out.output, "The price is $20.");
-  assert.equal(out.liveViewUrl, "https://liveview.firecrawl.dev/x");
+  assert.equal(out.liveViewUrl, "https://live.example");
+  assert.equal(out.creditsUsed, 3);
+  assert.equal(out.scrapeId, "scrape-ok");
+  assert.deepEqual(requests.map((r) => r.type), ["scrape", "interact", "stopInteract"]);
 }
 
-function testParseInteractCodeResult(): void {
-  const stdout = JSON.stringify({ success: true, stdout: "page text" });
-  const out = parseInteractOutput(stdout);
-  assert.equal(out.ok, true);
-  assert.equal(out.output, "page text");
-}
+async function testInteractStopsSessionAfterFailure(): Promise<void> {
+  const { runner, requests } = fakeRunner((request) => {
+    if (request.type === "scrape") {
+      return jsonStdout({ markdown: "# Page", metadata: { scrapeId: "scrape-fail" } });
+    }
+    if (request.type === "interact") {
+      return { stdout: "", stderr: "interaction failed", exitCode: 500 };
+    }
+    if (request.type === "stopInteract") {
+      assert.equal(request.scrapeId, "scrape-fail");
+      return jsonStdout({ success: true });
+    }
+    throw new Error(`unexpected request ${request.type}`);
+  });
 
-function testParseInteractHardError(): void {
-  const out = parseInteractOutput("");
+  const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+  const out = await client.interact("https://example.com", { prompt: "Click pricing" });
+
   assert.equal(out.ok, false);
   assert.equal(out.failure?.kind, "hard-error");
+  assert.deepEqual(requests.map((r) => r.type), ["scrape", "interact", "stopInteract"]);
 }
 
-// --- web_browse fallback decision ------------------------------------
+async function testInteractStopsSessionAfterAbort(): Promise<void> {
+  const controller = new AbortController();
+  const { runner, requests } = fakeRunner((request) => {
+    if (request.type === "scrape") {
+      return jsonStdout({ markdown: "# Page", metadata: { scrapeId: "scrape-abort" } });
+    }
+    if (request.type === "interact") {
+      controller.abort();
+      throw new Error("Operation aborted");
+    }
+    if (request.type === "stopInteract") {
+      assert.equal(request.scrapeId, "scrape-abort");
+      assert.equal(request.signal, undefined, "stop must ignore the user abort signal");
+      return jsonStdout({ success: true });
+    }
+    throw new Error(`unexpected request ${request.type}`);
+  });
 
-function testShouldFallbackBrowseRuntime(): void {
-  assert.equal(shouldFallbackBrowse(new Error("agent-browser is not installed")), true);
-  assert.equal(shouldFallbackBrowse(new Error("Browser action failed: click — timeout")), true);
+  const client = createFirecrawlKeyless({ runner, isEnabled: () => true });
+  const out = await client.interact("https://example.com", { prompt: "Click pricing" }, controller.signal);
+
+  assert.equal(out.ok, false);
+  assert.deepEqual(requests.map((r) => r.type), ["scrape", "interact", "stopInteract"]);
 }
 
-function testShouldNotFallbackBrowseValidation(): void {
-  assert.equal(shouldFallbackBrowse(new Error('Action "click" requires non-empty selector')), false);
-  assert.equal(shouldFallbackBrowse(new Error('Action "wait" requires non-negative integer ms')), false);
-  assert.equal(shouldFallbackBrowse(new Error("Unsupported browser action: foo")), false);
+async function main(): Promise<void> {
+  await testSearchThroughKeylessSeam();
+  await testScrapeThroughKeylessSeam();
+  await testGracefulSkipFailures();
+  testFallbackDecisionsThroughKeylessSeam();
+  await testInteractThroughKeylessSeam();
+  await testInteractStopsSessionAfterFailure();
+  await testInteractStopsSessionAfterAbort();
+  console.log("firecrawl keyless seam tests passed");
 }
 
-testInteractArgsPrompt();
-testInteractArgsCode();
-testInteractStopArgs();
-testParseInteractOutput();
-testParseInteractCodeResult();
-testParseInteractHardError();
-testShouldFallbackBrowseRuntime();
-testShouldNotFallbackBrowseValidation();
-
-console.log("firecrawl wrapper tests passed");
+main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});

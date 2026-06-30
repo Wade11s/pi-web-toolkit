@@ -7,12 +7,20 @@
 
 import assert from "node:assert/strict";
 import { runWebSearchCore } from "../../extensions/utils/web-search-core";
+import type { FirecrawlKeyless, FirecrawlSearchOutput } from "../../extensions/utils/firecrawl";
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
+}
+
+function fakeFirecrawl(search: () => Promise<FirecrawlSearchOutput>): Pick<FirecrawlKeyless, "search" | "shouldFallbackSearch"> {
+  return {
+    shouldFallbackSearch: (localOk, resultCount) => !localOk || resultCount === 0,
+    search,
+  };
 }
 
 async function testLocalResultsDoNotAttemptFirecrawl(): Promise<void> {
@@ -23,10 +31,10 @@ async function testLocalResultsDoNotAttemptFirecrawl(): Promise<void> {
       query: "pi",
       results: [{ title: "Pi", url: "https://example.com/pi", content: "Local result" }],
     }),
-    firecrawlSearch: async () => {
+    firecrawl: fakeFirecrawl(async () => {
       firecrawlCalls += 1;
       return { ok: true, results: [{ title: "Cloud", url: "https://firecrawl.example" }] };
-    },
+    }),
     signal: new AbortController().signal,
   });
 
@@ -42,11 +50,11 @@ async function testMissingFirecrawlDoesNotBecomePrimaryWebSearchError(): Promise
     await runWebSearchCore({ query: "pi", results: 3 }, {
       searxngUrl: "https://searxng.example",
       fetchImpl: async () => { throw new Error("synthetic SearXNG outage"); },
-      firecrawlSearch: async () => ({
+      firecrawl: fakeFirecrawl(async () => ({
         ok: false,
         results: [],
         failure: { kind: "graceful-skip", reason: "firecrawl is not installed" },
-      }),
+      })),
       signal: new AbortController().signal,
     });
   } catch (err: any) {
@@ -62,11 +70,11 @@ async function testZeroLocalResultsAndMissingFirecrawlReturnsEmptyLocalResult():
   const out = await runWebSearchCore({ query: "nothing", results: 3 }, {
     searxngUrl: "https://searxng.example",
     fetchImpl: async () => jsonResponse({ query: "nothing", results: [], suggestions: ["something"] }),
-    firecrawlSearch: async () => ({
+    firecrawl: fakeFirecrawl(async () => ({
       ok: false,
       results: [],
       failure: { kind: "graceful-skip", reason: "firecrawl is not installed" },
-    }),
+    })),
     signal: new AbortController().signal,
   });
 

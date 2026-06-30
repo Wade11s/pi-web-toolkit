@@ -149,7 +149,7 @@ curl -fsS --get "$SEARXNG_URL/search" \
 
 ## Configuration
 
-Runtime configuration is resolved in this order: environment variables first, then the toolkit config file written by the installer, then built-in defaults. No build step is required.
+Runtime configuration is resolved in this order: environment variables first, then the toolkit config file written by the installer, then built-in defaults. Runtime tools, installer writes, and doctor mode share the same config core for schema, validation, precedence, and merge behavior. No build step is required.
 
 Default toolkit config path:
 
@@ -243,14 +243,16 @@ pi-web-toolkit/
 │   ├── index.ts              # Unified entry point — registers all 7 tools (4 local + 3 Firecrawl keyless)
 │   ├── utils/
 │   │   ├── cli-runner.ts     # Unified CLI process spawning with timeout/AbortSignal/env
-│   │   ├── config.ts         # Toolkit config and external CLI path resolution
+│   │   ├── config.ts         # TypeScript wrapper for shared toolkit config semantics
+│   │   ├── config-core.cjs    # Shared config schema/defaults/precedence/write CLI for runtime + installer
+│   │   ├── browser-action-language.ts # Shared web_browse action semantics and planning
 │   │   ├── content-preview.ts # Intelligent content extraction from scraped pages
+│   │   ├── page-extraction.ts # Shared Scrapling page reads, previews, and output fallback
 │   │   ├── output-sink.ts    # Truncation + temp-file fallback
 │   │   ├── render-helpers.ts # URL abbreviations, text normalization, error formatting for TUI
 │   │   ├── scrapling.ts      # Reusable scrapling CLI wrapper (shared by fetch + batch)
-│   │   ├── tool-factory.ts   # Common tool registration patterns
-│   │   ├── agent-browser.ts  # agent-browser CLI wrapper (shared by web_browse)
-│   │   └── firecrawl.ts      # Firecrawl keyless CLI wrapper + fallback decisions (shared by firecrawl_* tools + fallbacks)
+│   │   ├── agent-browser.ts  # agent-browser CLI execution adapter (shared by web_browse)
+│   │   └── firecrawl.ts      # Firecrawl Keyless seam: search/scrape/interact + fallback decisions
 │   ├── web_search.ts         # SearXNG search tool (+ Firecrawl fallback)
 │   ├── web_fetch.ts          # Single-page scrapling fetcher (+ Firecrawl fallback)
 │   ├── web_batch_fetch.ts    # Parallel scrapling fetcher
@@ -260,9 +262,12 @@ pi-web-toolkit/
 │   └── firecrawl_interact.ts # Firecrawl keyless natural-language interaction (escape hatch)
 ├── test/
 │   ├── agent-browser/        # agent-browser output parser regression tests
-│   ├── config/               # Toolkit config precedence tests
+│   ├── browser-action-language/ # web_browse action semantics tests
+│   ├── config/               # Shared toolkit config precedence/validation/write tests
 │   ├── content-preview/      # Content preview fixtures, baselines & snapshots
+│   ├── page-extraction/      # Page extraction interface tests
 │   ├── installer/            # Bootstrap installer behavior tests
+│   ├── tool-presentation/    # Presentation helper deletion-test contract
 │   ├── web-search/           # SearXNG-first fallback behavior tests
 │   └── README.md             # Test suite structure and conventions
 ├── docs/
