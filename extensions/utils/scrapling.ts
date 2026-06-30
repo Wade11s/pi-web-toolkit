@@ -1,4 +1,5 @@
 import { runCLI } from "./cli-runner";
+import { getToolkitCommand } from "./config";
 
 /**
  * Run a scrapling CLI command with optional abort signal.
@@ -7,7 +8,7 @@ export function runScrapling(
   args: string[],
   signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return runCLI({ command: "scrapling", args, signal });
+  return runCLI({ command: getToolkitCommand("scrapling"), args, signal });
 }
 
 /**

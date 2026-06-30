@@ -7,6 +7,9 @@
  */
 
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildScrapeArgs,
   parseScrapeOutput,
@@ -17,6 +20,7 @@ import {
   parseSearchOutput,
   shouldFallbackSearch,
   buildInteractArgs,
+  buildFirecrawlCliInvocation,
   buildInteractStopArgs,
   parseInteractOutput,
   shouldFallbackBrowse,
@@ -129,24 +133,87 @@ testClassifyHardError();
 
 // --- keyless-eligibility (opt-out toggle) ----------------------------
 
+function withIsolatedToolkitConfig(fn: () => void): void {
+  const prevConfig = process.env.PI_WEB_TOOLKIT_CONFIG;
+  process.env.PI_WEB_TOOLKIT_CONFIG = join(mkdtempSync(join(tmpdir(), "pi-firecrawl-test-")), "config.json");
+  writeFileSync(process.env.PI_WEB_TOOLKIT_CONFIG, "{}\n");
+  try {
+    fn();
+  } finally {
+    if (prevConfig === undefined) delete process.env.PI_WEB_TOOLKIT_CONFIG;
+    else process.env.PI_WEB_TOOLKIT_CONFIG = prevConfig;
+  }
+}
+
 function testFirecrawlEnabledByDefault(): void {
-  const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
-  delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
-  assert.equal(isFirecrawlEnabled(), true);
-  process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
+  withIsolatedToolkitConfig(() => {
+    const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
+    delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
+    assert.equal(isFirecrawlEnabled(), true);
+    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
+    else process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
+  });
 }
 
 function testFirecrawlOptOut(): void {
-  const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
-  for (const v of ["0", "false", "no", "off"]) {
-    process.env.PI_WEB_FIRECRAWL_FALLBACK = v;
-    assert.equal(isFirecrawlEnabled(), false, `opt-out value ${v} should disable`);
-  }
-  process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
+  withIsolatedToolkitConfig(() => {
+    const prev = process.env.PI_WEB_FIRECRAWL_FALLBACK;
+    for (const v of ["0", "false", "no", "off"]) {
+      process.env.PI_WEB_FIRECRAWL_FALLBACK = v;
+      assert.equal(isFirecrawlEnabled(), false, `opt-out value ${v} should disable`);
+    }
+    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_FALLBACK;
+    else process.env.PI_WEB_FIRECRAWL_FALLBACK = prev;
+  });
 }
 
 testFirecrawlEnabledByDefault();
 testFirecrawlOptOut();
+
+// --- runner command resolution ----------------------------------------
+
+function testInstalledRunnerInvocation(): void {
+  withIsolatedToolkitConfig(() => {
+    const prev = process.env.FIRECRAWL_BIN;
+    process.env.FIRECRAWL_BIN = "/custom/firecrawl";
+    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
+      command: "/custom/firecrawl",
+      args: ["search", "pi"],
+    });
+    if (prev === undefined) delete process.env.FIRECRAWL_BIN;
+    else process.env.FIRECRAWL_BIN = prev;
+  });
+}
+
+function testNpxRunnerInvocation(): void {
+  withIsolatedToolkitConfig(() => {
+    const prev = process.env.PI_WEB_FIRECRAWL_RUNNER;
+    process.env.PI_WEB_FIRECRAWL_RUNNER = "npx";
+    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
+      command: "npx",
+      args: ["-y", "firecrawl-cli", "search", "pi"],
+    });
+    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_RUNNER;
+    else process.env.PI_WEB_FIRECRAWL_RUNNER = prev;
+  });
+}
+
+function testBunxRunnerInvocation(): void {
+  withIsolatedToolkitConfig(() => {
+    const prev = process.env.PI_WEB_FIRECRAWL_RUNNER;
+    process.env.PI_WEB_FIRECRAWL_RUNNER = "bunx";
+    assert.deepEqual(buildFirecrawlCliInvocation(["search", "pi"]), {
+      command: "bunx",
+      args: ["firecrawl-cli", "search", "pi"],
+    });
+    if (prev === undefined) delete process.env.PI_WEB_FIRECRAWL_RUNNER;
+    else process.env.PI_WEB_FIRECRAWL_RUNNER = prev;
+  });
+}
+
+testInstalledRunnerInvocation();
+testNpxRunnerInvocation();
+testBunxRunnerInvocation();
 
 // --- search argument builder ------------------------------------------
 

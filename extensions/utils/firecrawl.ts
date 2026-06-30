@@ -19,6 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { runCLI } from "./cli-runner";
+import { getFirecrawlRunner, getToolkitCommand, isFirecrawlFallbackEnabled, type FirecrawlRunner } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -33,8 +34,7 @@ export type FirecrawlFailureKind = "graceful-skip" | "hard-error";
  * the single opt-out for a strict local-only / no-cloud-egress policy.
  */
 export function isFirecrawlEnabled(): boolean {
-  const v = (process.env.PI_WEB_FIRECRAWL_FALLBACK ?? "").trim().toLowerCase();
-  return !(v === "0" || v === "false" || v === "no" || v === "off");
+  return isFirecrawlFallbackEnabled();
 }
 
 export interface FirecrawlFailure {
@@ -159,6 +159,29 @@ export interface FirecrawlCliResult {
   exitCode: number;
 }
 
+export interface FirecrawlCliInvocation {
+  command: string;
+  args: string[];
+}
+
+/**
+ * Build the command used to invoke the official Firecrawl CLI. `npx` and
+ * `bunx` are opt-in runners because they may run or download packages at
+ * fallback time.
+ */
+export function buildFirecrawlCliInvocation(
+  args: string[],
+  runner: FirecrawlRunner = getFirecrawlRunner(),
+): FirecrawlCliInvocation {
+  if (runner === "npx") {
+    return { command: "npx", args: ["-y", "firecrawl-cli", ...args] };
+  }
+  if (runner === "bunx") {
+    return { command: "bunx", args: ["firecrawl-cli", ...args] };
+  }
+  return { command: getToolkitCommand("firecrawl"), args };
+}
+
 /**
  * Run the firecrawl CLI under an isolated temporary HOME with no key env, so
  * it can only ever operate in keyless mode (no stored credentials, no
@@ -178,7 +201,8 @@ export async function runFirecrawlCli(
     delete env.FIRECRAWL_OAUTH_TOKEN;
     env.HOME = home;
     env.XDG_CONFIG_HOME = path.join(home, ".config");
-    return await runCLI({ command: "firecrawl", args, env, signal, timeout });
+    const invocation = buildFirecrawlCliInvocation(args);
+    return await runCLI({ command: invocation.command, args: invocation.args, env, signal, timeout });
   } finally {
     await rm(home, { recursive: true, force: true }).catch(() => { /* best-effort */ });
   }

@@ -44,9 +44,25 @@ User asks about something external / current
 
 ---
 
+## Installation and endpoint selection
+
+Use the root `install.sh` bootstrap installer for ordinary installs. It verifies prerequisites, installs or reuses Scrapling and agent-browser, configures a JSON-capable SearXNG endpoint, writes toolkit config, installs the pi package, and performs final verification.
+
+SearXNG endpoint selection is endpoint-first:
+
+1. `--searxng-url` or `SEARXNG_URL`
+2. existing toolkit config
+3. working localhost endpoints
+4. explicit public discovery with `--auto-searxng public`
+5. explicit isolated local Docker setup with `--auto-searxng local-docker`
+
+Public SearXNG endpoints are discovered from `searx.space`, ranked by health signals, then verified with `/search?q=...&format=json` before use. The installer does not silently choose a public endpoint unless explicitly requested. Use `./install.sh --doctor` for verify-only diagnostics; normal installation already performs final verification.
+
+---
+
 ## Firecrawl Keyless fallback
 
-When a local backend cannot do the job, the tools automatically retry through **Firecrawl Keyless** (1,000 free credits/month, no API key, no signup) before giving up. It is **fallback-only** — never the primary path — and is **opt-out-able** with `PI_WEB_FIRECRAWL_FALLBACK=0`. Requires the optional `firecrawl-cli` (`npm install -g firecrawl-cli`); if it is absent the tools simply surface the original local error. Agents should call `web_search`/`web_fetch`/`web_browse` first and call `firecrawl_*` directly only after the corresponding local-first tool failed, or when the user explicitly asks for Firecrawl/cloud behavior.
+When a local backend cannot do the job, the tools automatically retry through **Firecrawl Keyless** (1,000 free credits/month, no API key, no signup) before giving up. It is **fallback-only** — never the primary path — and is **opt-out-able** with `PI_WEB_FIRECRAWL_FALLBACK=0` or toolkit config `"firecrawlFallback": false`. Requires the optional `firecrawl-cli` (`npm install -g firecrawl-cli`) or an explicit `firecrawlRunner` of `npx`/`bunx`; if no runner is available the tools simply surface the original local error. Agents should call `web_search`/`web_fetch`/`web_browse` first and call `firecrawl_*` directly only after the corresponding local-first tool failed, or when the user explicitly asks for Firecrawl/cloud behavior.
 
 | Tool | Falls back to Firecrawl when… |
 |------|-------------------------------|
@@ -57,10 +73,10 @@ When a local backend cannot do the job, the tools automatically retry through **
 
 The three `firecrawl_*` tools are fallback-only explicit escape hatches for capabilities the local backends lack (`github`/`research`/`pdf` search categories, cloud rendering, natural-language interaction). They are not the first step for ordinary URL reading; `web_fetch` already performs Firecrawl fallback internally when local fetching fails.
 
-**Graceful skip.** If the fallback itself cannot help — the CLI is missing, the IP is flagged as suspicious, the keyless quota is exhausted, or the fallback is disabled — the tool falls through to the original local-tool error so the user is never left worse off.
+**Graceful skip.** If the fallback itself cannot help — the runner is missing, the IP is flagged as suspicious, the keyless quota is exhausted, or the fallback is disabled — the tool falls through to the original local-tool error so the user is never left worse off. `firecrawlRunner` defaults to `installed`; `npx` and `bunx` are opt-in because they may run or download packages at fallback time.
 
 **Credit budgeting.** Search ≈ 2 credits / 10 results, scrape ≈ 1 credit / page, interact ≈ 2 credits/min (code-only) or ≈ 7 credits/min (AI prompt). Results report `creditsUsed` where the source provides it. The fallback stays conservative (small limits) against the 1,000 credits/month allowance.
 
-**Privacy.** Firecrawl is a cloud service: when the fallback runs, the URL/query and page content leave the machine. Set `PI_WEB_FIRECRAWL_FALLBACK=0` to enforce a strict local-only, no-cloud-egress policy. The fallback is **keyless-only** — it never reads, stores, or sends an API key, and spawns the CLI under an isolated temporary `HOME`.
+**Privacy.** Firecrawl is a cloud service: when the fallback runs, the URL/query and page content leave the machine. Set `PI_WEB_FIRECRAWL_FALLBACK=0` or toolkit config `"firecrawlFallback": false` to enforce a strict local-only, no-cloud-egress policy. The fallback is **keyless-only** — it never reads, stores, or sends an API key, and spawns the CLI under an isolated temporary `HOME`.
 
 ---

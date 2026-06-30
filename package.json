@@ -1,6 +1,6 @@
 {
   "name": "pi-web-toolkit",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Web research toolkit for the pi coding agent. Search via SearXNG, fetch pages with scrapling, browse interactively via agent-browser, batch-read sources in parallel, and optionally fall back to Firecrawl Keyless (no API key) when a local backend fails.",
   "author": "Wade Huang <fastwade11@gmail.com>",
   "license": "MIT",
@@ -13,15 +13,18 @@
   },
   "homepage": "https://github.com/Wade11s/pi-web-toolkit#readme",
   "keywords": ["pi-package", "pi-extension", "web-search", "scrapling", "agent-browser", "firecrawl"],
-  "files": ["extensions", "docs", "README.md", "CHANGELOG.md", "package.json", "LICENSE"],
+  "files": ["extensions", "docs", "install.sh", "README.md", "CHANGELOG.md", "package.json", "LICENSE"],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts && tsx test/firecrawl/test.ts && tsx test/tool-routing/test.ts",
+    "test": "tsx test/content-preview/test.ts && tsx test/agent-browser/test.ts && tsx test/firecrawl/test.ts && tsx test/tool-routing/test.ts && tsx test/config/test.ts && tsx test/web-search/test.ts && tsx test/installer/test.ts && bash -n install.sh",
     "test:agent-browser": "tsx test/agent-browser/test.ts",
+    "test:config": "tsx test/config/test.ts",
     "test:firecrawl": "tsx test/firecrawl/test.ts",
+    "test:installer": "tsx test/installer/test.ts && bash -n install.sh",
+    "test:web-search": "tsx test/web-search/test.ts",
     "test:approve": "tsx test/content-preview/test.ts --approve"
   },
   "devDependencies": {

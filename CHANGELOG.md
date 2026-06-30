@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-06-28
+
+### Added
+
+- `install.sh` bootstrap installer for one-command pi-web-toolkit setup, including dependency verification, SearXNG endpoint selection, toolkit config writing, optional Firecrawl setup, local development install mode, and `--doctor` diagnostics.
+- Toolkit config support at `${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json`, with environment variables taking precedence for SearXNG endpoints, Firecrawl fallback enablement, Firecrawl runner selection, and external CLI command paths.
+- Public SearXNG endpoint discovery from `searx.space` with JSON API verification, plus an explicit isolated local Docker SearXNG option.
+- Explicit Firecrawl runner selection through `firecrawlRunner` / `PI_WEB_FIRECRAWL_RUNNER`, supporting `installed`, `npx`, and `bunx`.
+- Regression tests for toolkit config precedence and installer behavior, including public endpoint and local Docker flows.
+
+### Changed
+
+- README and guide now present the bootstrap installer as the primary installation path while keeping manual setup as an advanced option.
+- External CLI wrappers can use configured absolute command paths, reducing reliance on shell profile/PATH changes after installer runs.
+- `web_search` fallback behavior is covered by regression tests so missing optional Firecrawl runners do not appear as the primary search backend failure.
+
 ## [0.3.2] - 2026-06-25
 
 ### Fixed
@@ -157,7 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `web_browse` — interactive browser automation via agent-browser.
 - LLM-optimized `promptGuidelines` and `promptSnippet` for every tool.
 
-[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Wade11s/pi-web-toolkit/compare/v0.2.2...v0.3.0

@@ -1,5 +1,20 @@
 # Tool Reference
 
+## Runtime configuration
+
+Tools resolve runtime configuration in this order: environment variables, toolkit config, then built-in defaults. The installer writes toolkit config to `${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json`; override that path with `PI_WEB_TOOLKIT_CONFIG`.
+
+| Variable | Toolkit config key | Default | Used By |
+|----------|--------------------|---------|---------|
+| `SEARXNG_URL` | `searxngUrl` | `http://localhost:8080` | `web_search` |
+| `PI_WEB_FIRECRAWL_FALLBACK` | `firecrawlFallback` | `true` | Firecrawl fallback paths |
+| `PI_WEB_FIRECRAWL_RUNNER` | `firecrawlRunner` | `installed` | Firecrawl fallback paths |
+| `SCRAPLING_BIN` | `commands.scrapling` | `scrapling` | `web_fetch`, `web_batch_fetch` |
+| `AGENT_BROWSER_BIN` | `commands.agentBrowser` | `agent-browser` | `web_browse` |
+| `FIRECRAWL_BIN` | `commands.firecrawl` | `firecrawl` | `firecrawl_*` and fallback paths |
+
+If toolkit config exists but is malformed, tools fail with a clear config error instead of silently ignoring the file. `firecrawlRunner` accepts `installed`, `npx`, or `bunx`; `npx` and `bunx` are opt-in because they may run or download packages at fallback time.
+
 ## `web_search`
 
 Search the web via SearXNG. Returns ranked results with title, URL, and snippet. Automatically aggregates up to 3 pages of SearXNG results when more than ~20 are needed.
@@ -170,7 +185,7 @@ User: "Compare Python asyncio, Trio, and curio"
 
 These three tools talk to [Firecrawl](https://www.firecrawl.dev) in **keyless** mode: 1,000 free credits/month, **no API key and no signup**. They require the optional `firecrawl-cli` (`npm install -g firecrawl-cli`). **Privacy:** the URL/query/page content is sent to Firecrawl's cloud.
 
-They double as the implementation of the automatic fallback: `web_search`/`web_fetch`/`web_browse` retry through Firecrawl keyless when their local backend fails (or search returns nothing). Do not use `firecrawl_*` as the first attempt for ordinary search, URL reading, or page interaction; use the corresponding local-first tool first unless the user explicitly asks for Firecrawl/cloud behavior. Disable all Firecrawl usage with `PI_WEB_FIRECRAWL_FALLBACK=0`.
+They double as the implementation of the automatic fallback: `web_search`/`web_fetch`/`web_browse` retry through Firecrawl keyless when their local backend fails (or search returns nothing). Do not use `firecrawl_*` as the first attempt for ordinary search, URL reading, or page interaction; use the corresponding local-first tool first unless the user explicitly asks for Firecrawl/cloud behavior. Disable all Firecrawl usage with `PI_WEB_FIRECRAWL_FALLBACK=0` or toolkit config `"firecrawlFallback": false`.
 
 ### `firecrawl_search`
 

@@ -22,7 +22,7 @@ Web research toolkit for [pi](https://pi.dev) agents. Search via SearXNG, fetch 
 | **`firecrawl_scrape`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud single-page fetch (anti-bot / JS / PDF) | — |
 | **`firecrawl_interact`** | [firecrawl-cli](https://github.com/firecrawl/cli) (keyless) | Cloud natural-language page interaction | — |
 
-> **Firecrawl fallback.** `web_search`, `web_fetch`, and `web_browse` are the local-first primary tools and automatically retry through Firecrawl Keyless (1,000 free credits/month, no API key) only when their local backend errors out or search returns nothing. The three `firecrawl_*` tools are fallback-only escape hatches; agents are instructed not to call them first unless you explicitly ask for Firecrawl/cloud behavior or a local-first tool already failed. Disable fallback use with `PI_WEB_FIRECRAWL_FALLBACK=0`. Install the optional CLI: `npm install -g firecrawl-cli`.
+> **Firecrawl fallback.** `web_search`, `web_fetch`, and `web_browse` are the local-first primary tools and automatically retry through Firecrawl Keyless (1,000 free credits/month, no API key) only when their local backend errors out or search returns nothing. The three `firecrawl_*` tools are fallback-only escape hatches; agents are instructed not to call them first unless you explicitly ask for Firecrawl/cloud behavior or a local-first tool already failed. Disable fallback use with `PI_WEB_FIRECRAWL_FALLBACK=0` or toolkit config `"firecrawlFallback": false`. Install the optional CLI: `npm install -g firecrawl-cli`.
 
 ## Tools Preview
 
@@ -46,154 +46,149 @@ A quick look at how pi renders toolkit calls while an agent searches, fetches, b
   </tr>
 </table>
 
-## Install with Pi Agent
-
-Copy and send the prompt below to Pi. It will install this package and its external dependencies for you.
-
-```text
-Install pi-web-toolkit and its external dependencies. Complete and verify every
-step yourself; do not rely on web browsing or external documentation. Inspect
-the machine first and reuse working installations. Ask before using sudo,
-changing shell profiles, overwriting configuration, or modifying existing
-services or containers.
-
-1. Ensure Node.js 22+, npm, Docker, OpenSSL, curl, uv, and Pi are installed, and
-   that Docker is running. Install only missing or incompatible prerequisites.
-2. Configure SearXNG:
-   - Test SEARXNG_URL when set, then http://localhost:8080.
-   - Verify /search?q=test&format=json returns JSON with a results array.
-   - If neither endpoint works, first ensure no existing container or config
-     would be overwritten, then create a local-only instance by running:
-
-mkdir -p "$HOME/.config/searxng"
-cat > "$HOME/.config/searxng/settings.yml" <<'YAML'
-use_default_settings: true
-
-search:
-  formats:
-    - html
-    - json
-YAML
-
-docker run -d \
-  --name searxng \
-  --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 \
-  -e FORCE_OWNERSHIP=false \
-  -e SEARXNG_SECRET="$(openssl rand -hex 32)" \
-  -v "$HOME/.config/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-  docker.io/searxng/searxng:latest
-
-   - Verify the selected endpoint by running:
-
-SEARXNG_ENDPOINT="${SEARXNG_URL:-http://localhost:8080}"
-curl -fsS --get "${SEARXNG_ENDPOINT%/}/search" \
-  --data-urlencode "q=test" \
-  --data "format=json" |
-  grep -q '"results"' && echo "SearXNG JSON API ready"
-
-   - Pi uses http://localhost:8080 by default. Set SEARXNG_URL before starting
-     Pi only when using another endpoint.
-3. Install and verify Scrapling:
-   uv tool install "scrapling[all]"
-   scrapling install
-   scrapling --help
-4. Install and verify agent-browser:
-   npm install -g agent-browser
-   agent-browser install
-   agent-browser doctor
-   On Linux, use agent-browser install --with-deps if required.
-5. Optionally install firecrawl-cli for the keyless cloud fallback (no API key
-   needed; the fallback degrades gracefully if it is absent):
-   npm install -g firecrawl-cli
-6. After all dependencies pass verification, install the package:
-   pi install npm:pi-web-toolkit
-
-Report what was installed or reused, all verification results, the SearXNG
-endpoint Pi will use, and whether Pi must be restarted. Do not report success
-until every check passes.
-```
-
 ## Quick Start
 
-### 1. Install external dependencies
+### Install
 
-The commands below assume a POSIX shell with Docker, OpenSSL, curl, uv, and Node.js 22+ with npm.
+Run the bootstrap installer:
 
 ```bash
-# SearXNG (for search; local-only instance with the required JSON API)
-mkdir -p "$HOME/.config/searxng"
-cat > "$HOME/.config/searxng/settings.yml" <<'YAML'
-use_default_settings: true
+curl -fsSL https://raw.githubusercontent.com/Wade11s/pi-web-toolkit/main/install.sh | bash
+```
 
-search:
-  formats:
-    - html
-    - json
-YAML
+This is the normal install path. It installs the pi package, configures external runtime dependencies, verifies everything, and writes persistent runtime options to `${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json`.
 
-docker run -d \
-  --name searxng \
-  --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 \
-  -e FORCE_OWNERSHIP=false \
-  -e SEARXNG_SECRET="$(openssl rand -hex 32)" \
-  -v "$HOME/.config/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-  docker.io/searxng/searxng:latest
-export SEARXNG_URL="http://127.0.0.1:8080"
+When it finishes, **restart pi** so the package is loaded. If pi-web-toolkit was already loaded and only toolkit config changed, `/reload` may also work.
+
+### What the installer does
+
+The installer:
+
+- Checks Node.js 22+, npm, Pi, curl, OpenSSL, and uv.
+- Installs or reuses Scrapling and agent-browser.
+- Configures a JSON-capable SearXNG endpoint for `web_search`.
+- Optionally installs `firecrawl-cli` for the Firecrawl Keyless fallback.
+- Writes toolkit config with the selected endpoint and discovered CLI paths.
+- Installs the pi package with `pi install npm:pi-web-toolkit`.
+- Runs final verification before reporting success.
+
+The installer is conservative. It does **not** silently install Docker, Node.js, Pi, Homebrew, OS packages, use sudo, change shell profiles, or overwrite user-managed SearXNG resources.
+
+### Common installer options
+
+When piping from curl, pass flags after `bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Wade11s/pi-web-toolkit/main/install.sh | bash -s -- --yes --searxng-url https://searxng.example.com --no-firecrawl
+```
+
+If you have cloned the repo, run the same flags directly:
+
+| Goal | Command |
+|------|---------|
+| Use an existing/self-hosted SearXNG endpoint | `./install.sh --searxng-url https://searxng.example.com` |
+| Non-interactive install with a known endpoint | `./install.sh --yes --searxng-url https://searxng.example.com --no-firecrawl` |
+| Explicitly auto-select a verified public SearXNG endpoint | `./install.sh --yes --auto-searxng public --no-firecrawl` |
+| Start/reuse isolated local Docker SearXNG | `./install.sh --yes --auto-searxng local-docker --searxng-port 8080 --no-firecrawl` |
+| Install optional Firecrawl Keyless fallback with global CLI | `./install.sh --with-firecrawl --firecrawl-runner installed` |
+| Enable Firecrawl fallback through opt-in `npx` runner | `./install.sh --with-firecrawl --firecrawl-runner npx` |
+| Enable Firecrawl fallback through opt-in `bunx` runner | `./install.sh --with-firecrawl --firecrawl-runner bunx` |
+| Verify readiness without changing anything | `./install.sh --doctor` |
+| Install from the current checkout | `./install.sh --local` |
+
+### SearXNG endpoint choices
+
+`web_search` needs a SearXNG endpoint that supports JSON search responses:
+
+```bash
+curl -fsS --get "https://searxng.example.com/search" \
+  --data-urlencode "q=searxng" \
+  --data "format=json" | grep -q '"results"'
+```
+
+The installer can use:
+
+- An existing/self-hosted endpoint passed with `--searxng-url`.
+- A working local endpoint such as `http://localhost:8080`.
+- A public endpoint discovered from `searx.space`, ranked by health signals, then verified with `format=json`.
+- An isolated local Docker endpoint using container `pi-web-toolkit-searxng` and config under the toolkit config directory.
+
+Public endpoints are not silently selected by default because search queries leave your machine. Use `--auto-searxng public` only when that trade-off is acceptable.
+
+### Manual install (advanced)
+
+If you prefer to install dependencies yourself:
+
+```bash
+# SearXNG endpoint: provide an existing JSON-capable endpoint, or run your own
+export SEARXNG_URL="https://searxng.example.com"
 
 # scrapling (for fetch & batch fetch)
 uv tool install "scrapling[all]"
 scrapling install
 
 # agent-browser (for browse)
-npm i -g agent-browser && agent-browser install
-# On Linux hosts missing browser system libraries: agent-browser install --with-deps
-
-# firecrawl-cli (OPTIONAL — enables the keyless cloud fallback; no API key needed)
-npm i -g firecrawl-cli
-```
-
-**Verify dependencies:**
-```bash
-# SearXNG
-curl -fsS --get "$SEARXNG_URL/search" \
-  --data-urlencode "q=searxng" \
-  --data "format=json" |
-  grep -q '"results"' && echo "SearXNG JSON API ready"
-
-# scrapling
-scrapling --help
-
-# agent-browser
+npm i -g agent-browser
+agent-browser install
 agent-browser doctor
-```
 
-### 2. Install the extension
-#### From npm
-```bash
+# firecrawl-cli (optional cloud fallback; no API key needed)
+npm i -g firecrawl-cli
+
+# pi package
 pi install npm:pi-web-toolkit
 ```
-#### From GitHub
+
+A SearXNG endpoint must support `format=json`:
+
 ```bash
-pi install git:github.com/Wade11s/pi-web-toolkit
+curl -fsS --get "$SEARXNG_URL/search" \
+  --data-urlencode "q=searxng" \
+  --data "format=json" | grep -q '"results"'
 ```
 
 ## Configuration
 
-`web_search` reads its SearXNG endpoint from an environment variable. Set it before starting pi; no build step is required.
+Runtime configuration is resolved in this order: environment variables first, then the toolkit config file written by the installer, then built-in defaults. No build step is required.
 
-| Variable | Default | Used By | Description |
-|----------|---------|---------|-------------|
-| `SEARXNG_URL` | `http://localhost:8080` | `web_search` | Your SearXNG instance endpoint |
-| `PI_WEB_FIRECRAWL_FALLBACK` | `1` (on) | all tools | Set to `0`/`false`/`no`/`off` to disable the optional Firecrawl keyless cloud fallback for a strict local-only policy. |
+Default toolkit config path:
 
-Set before starting pi:
+```text
+${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json
+```
+
+Example:
+
+```json
+{
+  "searxngUrl": "https://searxng.example.com",
+  "firecrawlFallback": false,
+  "firecrawlRunner": "installed",
+  "commands": {
+    "scrapling": "/Users/alice/.local/bin/scrapling",
+    "agentBrowser": "/Users/alice/.npm-global/bin/agent-browser",
+    "firecrawl": "/Users/alice/.npm-global/bin/firecrawl"
+  }
+}
+```
+
+| Variable | Toolkit config key | Default | Used By | Description |
+|----------|--------------------|---------|---------|-------------|
+| `SEARXNG_URL` | `searxngUrl` | `http://localhost:8080` | `web_search` | SearXNG endpoint. Must support `/search?q=...&format=json`. |
+| `PI_WEB_FIRECRAWL_FALLBACK` | `firecrawlFallback` | `true` | all Firecrawl fallback paths | Set env to `0`/`false`/`no`/`off`, or config to `false`, to disable cloud fallback. |
+| `PI_WEB_FIRECRAWL_RUNNER` | `firecrawlRunner` | `installed` | all Firecrawl fallback paths | Firecrawl runner: `installed`, `npx`, or `bunx`. `npx`/`bunx` are opt-in because they may run or download packages at fallback time. |
+| `SCRAPLING_BIN` | `commands.scrapling` | `scrapling` | `web_fetch`, `web_batch_fetch` | Scrapling executable path. |
+| `AGENT_BROWSER_BIN` | `commands.agentBrowser` | `agent-browser` | `web_browse` | agent-browser executable path. |
+| `FIRECRAWL_BIN` | `commands.firecrawl` | `firecrawl` | `firecrawl_*`, fallback paths | Firecrawl CLI executable path. |
+| `PI_WEB_TOOLKIT_CONFIG` | — | `${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json` | all tools | Override the toolkit config file location. |
+
+Set env vars before starting pi when you need a temporary override:
 
 ```bash
 export SEARXNG_URL="https://searxng.example.com"
-# Optional: disable the Firecrawl cloud fallback entirely
+export SCRAPLING_BIN="$HOME/.local/bin/scrapling"
 export PI_WEB_FIRECRAWL_FALLBACK=0
+export PI_WEB_FIRECRAWL_RUNNER=npx
 ```
 
 ### Optional: Firecrawl keyless fallback
@@ -206,7 +201,39 @@ Install the optional CLI (the fallback degrades gracefully if it is absent):
 npm install -g firecrawl-cli
 ```
 
+Alternatively, opt into a runner that executes the official CLI on demand:
+
+```json
+{ "firecrawlRunner": "npx" }
+```
+
+Allowed runners are `installed`, `npx`, and `bunx`. The default is `installed`; `npx` and `bunx` are never selected automatically because they may run or download packages at fallback time.
+
 The fallback is **keyless-only**: it never reads or stores an API key, and spawns the CLI under an isolated temporary `HOME` with the key env stripped. **Privacy:** when the fallback runs, the URL and page content are sent to Firecrawl's cloud.
+
+## Troubleshooting
+
+Run doctor mode when an install fails, when filing an issue, or when you want to verify an existing setup. It is verify-only: it does not install dependencies, write config, start containers, or run `pi install`.
+
+```bash
+./install.sh --doctor
+# or, without cloning:
+curl -fsSL https://raw.githubusercontent.com/Wade11s/pi-web-toolkit/main/install.sh | bash -s -- --doctor
+```
+
+Common failures:
+
+| Symptom | Fix |
+|---------|-----|
+| Node.js is too old | Install Node.js 22+ and retry. |
+| `uv` is missing | Install uv, then rerun the installer. |
+| SearXNG returns HTML/403 instead of JSON | Use another endpoint or enable `search.formats: json` on your SearXNG instance. |
+| Docker local SearXNG fails | Start Docker first, or use `--searxng-url` / `--auto-searxng public`. |
+| `agent-browser doctor` fails on Linux | Rerun with `--agent-browser-with-deps` or install the missing browser system libraries manually. |
+| Firecrawl fallback says runner missing | Install `firecrawl-cli`, choose `--firecrawl-runner npx`, choose `--firecrawl-runner bunx`, or disable fallback with `--no-firecrawl`. |
+| pi does not show the tools after install | Restart pi. |
+
+To remove the pi package, run `pi remove npm:pi-web-toolkit`. To remove the toolkit config, delete `${XDG_CONFIG_HOME:-~/.config}/pi-web-toolkit/config.json`. If the installer created local SearXNG, remove container `pi-web-toolkit-searxng` and the toolkit SearXNG config directory manually.
 
 ## Project Structure
 
@@ -216,6 +243,7 @@ pi-web-toolkit/
 │   ├── index.ts              # Unified entry point — registers all 7 tools (4 local + 3 Firecrawl keyless)
 │   ├── utils/
 │   │   ├── cli-runner.ts     # Unified CLI process spawning with timeout/AbortSignal/env
+│   │   ├── config.ts         # Toolkit config and external CLI path resolution
 │   │   ├── content-preview.ts # Intelligent content extraction from scraped pages
 │   │   ├── output-sink.ts    # Truncation + temp-file fallback
 │   │   ├── render-helpers.ts # URL abbreviations, text normalization, error formatting for TUI
@@ -232,7 +260,10 @@ pi-web-toolkit/
 │   └── firecrawl_interact.ts # Firecrawl keyless natural-language interaction (escape hatch)
 ├── test/
 │   ├── agent-browser/        # agent-browser output parser regression tests
+│   ├── config/               # Toolkit config precedence tests
 │   ├── content-preview/      # Content preview fixtures, baselines & snapshots
+│   ├── installer/            # Bootstrap installer behavior tests
+│   ├── web-search/           # SearXNG-first fallback behavior tests
 │   └── README.md             # Test suite structure and conventions
 ├── docs/
 │   ├── tools.md              # Full parameter specs
@@ -241,6 +272,7 @@ pi-web-toolkit/
 ├── AGENTS.md
 ├── CONTEXT.md
 ├── CHANGELOG.md
+├── install.sh
 ├── package.json
 ├── README.md
 ├── tsconfig.json
@@ -251,7 +283,7 @@ pi-web-toolkit/
 - **Unified registration** — `index.ts` is the single source of truth for what pi loads.
 - **Shared utilities** — `utils/` modules encapsulate CLI spawning, content extraction, output truncation, TUI formatting, and common registration patterns; tool files import only from `utils/`, never from each other.
 - **Per-tool isolation** — each tool owns its own schema, execute logic, and TUI renderer; no cross-imports except via `utils/`.
-- **Runtime config** — environment variables are read at execute time, not build time.
+- **Runtime config** — environment variables and toolkit config are read at execute time, not build time.
 
 ## Reference
 

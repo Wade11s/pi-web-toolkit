@@ -60,6 +60,11 @@ assertContains(
 
 assertFallbackOnlyFirecrawlTool(firecrawlScrape, "firecrawl_scrape", "web_fetch");
 assertFallbackOnlyFirecrawlTool(firecrawlSearch, "firecrawl_search", "web_search");
+assertContains(
+  firecrawlSearch,
+  "Firecrawl search failed",
+  "firecrawl_search",
+);
 assertFallbackOnlyFirecrawlTool(firecrawlInteract, "firecrawl_interact", "web_browse");
 
 assertContains(

@@ -6,6 +6,7 @@
  */
 
 import { runCLI } from "./cli-runner";
+import { getToolkitCommand } from "./config";
 
 export interface BrowseAction {
   type: "click" | "fill" | "type" | "press" | "wait" | "wait_selector" | "scroll";
@@ -180,7 +181,7 @@ export async function runAgentBrowserBatch(
 
   try {
     const result = await runCLI({
-      command: "agent-browser",
+      command: getToolkitCommand("agentBrowser"),
       args,
       stdin: JSON.stringify(commands),
       timeout: options.timeout,
@@ -199,7 +200,7 @@ export async function runAgentBrowserBatch(
       );
     }
   } catch (err: any) {
-    if (err.message === "agent-browser is not installed") {
+    if (typeof err.message === "string" && err.message.includes("is not installed")) {
       throw new Error(
         "agent-browser is not installed.\n\nInstall it with:\n  npm i -g agent-browser && agent-browser install\n\nThen run: agent-browser doctor"
       );
@@ -211,7 +212,7 @@ export async function runAgentBrowserBatch(
 export async function closeAgentBrowserSession(session: string, signal?: AbortSignal): Promise<void> {
   try {
     await runCLI({
-      command: "agent-browser",
+      command: getToolkitCommand("agentBrowser"),
       args: ["--session", session, "close"],
       signal,
     });
