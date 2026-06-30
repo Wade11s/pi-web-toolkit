@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,6 +14,8 @@ import {
   getSearxngUrl,
   getToolkitCommand,
   isFirecrawlFallbackEnabled,
+  resolveToolkitConfig,
+  writeToolkitConfig,
 } from "../../extensions/utils/config";
 
 const OLD_ENV = { ...process.env };
@@ -27,6 +29,73 @@ function tempConfig(contents: string): string {
   const file = join(dir, "config.json");
   writeFileSync(file, contents);
   return file;
+}
+
+function readJson(filePath: string): unknown {
+  return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function testResolveToolkitConfigAppliesPrecedenceInOnePlace(): void {
+  const configPath = tempConfig(JSON.stringify({
+    searxngUrl: "https://config.example/",
+    firecrawlFallback: false,
+    firecrawlRunner: "npx",
+    commands: {
+      scrapling: "/config/scrapling",
+      agentBrowser: "/config/agent-browser",
+      firecrawl: "/config/firecrawl",
+    },
+  }));
+
+  const resolved = resolveToolkitConfig({
+    env: {
+      PI_WEB_TOOLKIT_CONFIG: configPath,
+      SEARXNG_URL: "https://env.example/",
+      SCRAPLING_BIN: "/env/scrapling",
+      PI_WEB_FIRECRAWL_FALLBACK: "off",
+      PI_WEB_FIRECRAWL_RUNNER: "bunx",
+    },
+  });
+
+  assert.equal(resolved.configPath, configPath);
+  assert.equal(resolved.searxngUrl, "https://env.example");
+  assert.deepEqual(resolved.commands, {
+    scrapling: "/env/scrapling",
+    agentBrowser: "/config/agent-browser",
+    firecrawl: "/config/firecrawl",
+  });
+  assert.equal(resolved.firecrawlFallback, false);
+  assert.equal(resolved.firecrawlRunner, "bunx");
+}
+
+function testWriteToolkitConfigPreservesExistingFieldsAndAppliesInstallerSelections(): void {
+  const configPath = tempConfig(JSON.stringify({
+    customField: "keep me",
+    searxngUrl: "https://old.example",
+    commands: {
+      agentBrowser: "/old/agent-browser",
+      firecrawl: "/old/firecrawl",
+    },
+  }, null, 2));
+
+  const written = writeToolkitConfig(configPath, {
+    searxngUrl: "https://new.example/",
+    firecrawlFallback: true,
+    firecrawlRunner: "npx",
+    commands: {
+      scrapling: "/new/scrapling",
+    },
+  });
+
+  assert.equal(written.customField, "keep me");
+  assert.equal(written.searxngUrl, "https://new.example");
+  assert.equal(written.firecrawlFallback, true);
+  assert.equal(written.firecrawlRunner, "npx");
+  assert.deepEqual(written.commands, {
+    agentBrowser: "/old/agent-browser",
+    scrapling: "/new/scrapling",
+  });
+  assert.deepEqual(readJson(configPath), written);
 }
 
 function testDefaultSearxngUrl(): void {
@@ -76,6 +145,13 @@ function testInvalidToolkitConfigShapeFailsClearly(): void {
     () => getSearxngUrl(),
     /Invalid toolkit config.*searxngUrl must be a string/,
   );
+}
+
+function testCommandEnvOverrideDoesNotRequireExplicitConfigFile(): void {
+  restoreEnv();
+  process.env.PI_WEB_TOOLKIT_CONFIG = join(mkdtempSync(join(tmpdir(), "pi-web-toolkit-missing-config-")), "missing.json");
+  process.env.SCRAPLING_BIN = "/env/scrapling";
+  assert.equal(getToolkitCommand("scrapling"), "/env/scrapling");
 }
 
 function testCommandResolutionPrecedence(): void {
@@ -128,12 +204,15 @@ function testInvalidFirecrawlRunnerFailsClearly(): void {
   );
 }
 
+testResolveToolkitConfigAppliesPrecedenceInOnePlace();
+testWriteToolkitConfigPreservesExistingFieldsAndAppliesInstallerSelections();
 testDefaultSearxngUrl();
 testSearxngEnvOverridesToolkitConfig();
 testSearxngToolkitConfigOverridesDefault();
 testMalformedToolkitConfigFailsClearly();
 testExplicitMissingToolkitConfigFailsClearly();
 testInvalidToolkitConfigShapeFailsClearly();
+testCommandEnvOverrideDoesNotRequireExplicitConfigFile();
 testCommandResolutionPrecedence();
 testFirecrawlFallbackPrecedence();
 testFirecrawlRunnerPrecedence();

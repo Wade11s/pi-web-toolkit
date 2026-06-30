@@ -14,14 +14,17 @@ pi-web-toolkit/
 │   ├── firecrawl_scrape.ts  # Firecrawl keyless single-page fetch escape hatch
 │   ├── firecrawl_interact.ts # Firecrawl keyless natural-language interaction escape hatch
 │   └── utils/
-│       ├── agent-browser.ts # agent-browser command builder and parser
+│       ├── agent-browser.ts # agent-browser CLI execution adapter and parser
+│       ├── browser-action-language.ts # Shared web_browse action semantics and planning
+│       ├── config.ts        # TypeScript wrapper for toolkit config semantics
+│       ├── config-core.cjs  # Shared config schema/defaults/precedence/write CLI for runtime + installer
 │       ├── cli-runner.ts    # Shared external CLI process runner
 │       ├── content-preview.ts # Structural preview extraction
-│       ├── firecrawl.ts     # Firecrawl keyless CLI wrapper + fallback decisions
+│       ├── firecrawl.ts     # Firecrawl Keyless seam: search/scrape/interact + fallback decisions
+│       ├── page-extraction.ts # Shared Scrapling page reads, previews, and output fallback
 │       ├── output-sink.ts   # Truncation and temp-file fallback
 │       ├── render-helpers.ts # Shared TUI formatting helpers
-│       ├── scrapling.ts     # scrapling CLI wrapper
-│       └── tool-factory.ts  # Shared tool/rendering helpers
+│       └── scrapling.ts     # scrapling CLI wrapper
 ├── docs/                    # Documentation
 │   ├── tools.md             # Full parameter specs and usage examples
 │   ├── guide.md             # Decision tree and tool comparison
@@ -56,7 +59,7 @@ scrapling --help
 agent-browser doctor
 ```
 
-The automated suite covers content-preview behavior and agent-browser output parsing. Manual verification against a running pi instance is still required for end-to-end tool behavior.
+The automated suite covers content-preview behavior, page extraction, Firecrawl Keyless behavior, browser action semantics, presentation-helper structure, and agent-browser output parsing. Manual verification against a running pi instance is still required for end-to-end tool behavior.
 
 ## Coding Style & Naming Conventions
 

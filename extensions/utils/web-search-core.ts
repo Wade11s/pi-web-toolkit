@@ -6,8 +6,7 @@
  * SearXNG failure/no-result UX.
  */
 
-import type { FirecrawlSearchOutput } from "./firecrawl";
-import { shouldFallbackSearch } from "./firecrawl";
+import type { FirecrawlKeyless, FirecrawlSearchOutput } from "./firecrawl";
 
 export interface WebSearchCoreInput {
   query: string;
@@ -41,7 +40,7 @@ export interface WebSearchCoreResult {
 export interface WebSearchCoreDeps {
   searxngUrl: string;
   fetchImpl: typeof fetch;
-  firecrawlSearch: (query: string, options: { limit: number }, signal?: AbortSignal) => Promise<FirecrawlSearchOutput>;
+  firecrawl: Pick<FirecrawlKeyless, "search" | "shouldFallbackSearch">;
   signal?: AbortSignal;
 }
 
@@ -113,8 +112,8 @@ export async function runWebSearchCore(
     localError = err.message ?? String(err);
   }
 
-  if (shouldFallbackSearch(localOk, allResults.length)) {
-    const fb = await deps.firecrawlSearch(input.query, { limit: Math.min(maxResults, 10) }, deps.signal);
+  if (deps.firecrawl.shouldFallbackSearch(localOk, allResults.length)) {
+    const fb = await deps.firecrawl.search(input.query, { limit: Math.min(maxResults, 10) }, deps.signal);
     if (fb.ok && fb.results.length > 0) {
       const fbResults: WebSearchResultItem[] = fb.results.slice(0, maxResults).map((r) => ({
         title: r.title ?? "(untitled)",

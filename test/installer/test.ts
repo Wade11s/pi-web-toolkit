@@ -172,6 +172,27 @@ function testDoctorModeIsNonMutatingAndReportsReady(): void {
   assert.deepEqual(readJson(f.config), existing);
 }
 
+function testDoctorTreatsExplicitMissingConfigLikeRuntimeResolution(): void {
+  const f = makeFixture("basic");
+
+  const result = runInstaller(f, ["--doctor"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /FAIL\s+toolkit config missing:/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Toolkit config file not found.*config\.json/);
+}
+
+function testDoctorReportsInvalidConfigDetailsFromSharedConfigSeam(): void {
+  const f = makeFixture("basic");
+  writeFileSync(f.config, JSON.stringify({ firecrawlRunner: "curl" }, null, 2));
+
+  const result = runInstaller(f, ["--doctor"]);
+  assert.equal(result.status, 1);
+  assert.match(
+    `${result.stdout}\n${result.stderr}`,
+    /Invalid toolkit config.*firecrawlRunner must be one of: installed, npx, bunx/,
+  );
+}
+
 function testCustomEndpointInstallWritesToolkitConfig(): void {
   const f = makeFixture("basic");
   const result = runInstaller(f, ["--yes", "--local", "--searxng-url", "https://custom.example/", "--no-firecrawl"]);
@@ -248,6 +269,24 @@ function testFirecrawlBunxRunnerWritesConfigWithoutGlobalInstall(): void {
   assert.match(result.stdout, /Firecrawl fallback: enabled \(bunx\)/);
 }
 
+function testDoctorUsesRuntimeConfigPrecedenceForFirecrawlRunner(): void {
+  const f = makeFixture("basic");
+  writeFileSync(f.config, JSON.stringify({
+    searxngUrl: "https://configured.example",
+    firecrawlFallback: true,
+    firecrawlRunner: "npx",
+    commands: {
+      scrapling: join(f.bin, "scrapling"),
+      agentBrowser: join(f.bin, "agent-browser"),
+    },
+  }, null, 2));
+  f.env.PI_WEB_FIRECRAWL_RUNNER = "bunx";
+
+  const result = runInstaller(f, ["--doctor"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /OK\s+Firecrawl runner bunx/);
+}
+
 function testDoctorReportsConfiguredFirecrawlRunner(): void {
   const f = makeFixture("basic");
   writeFileSync(f.config, JSON.stringify({
@@ -266,12 +305,15 @@ function testDoctorReportsConfiguredFirecrawlRunner(): void {
 }
 
 testDoctorModeIsNonMutatingAndReportsReady();
+testDoctorTreatsExplicitMissingConfigLikeRuntimeResolution();
+testDoctorReportsInvalidConfigDetailsFromSharedConfigSeam();
 testCustomEndpointInstallWritesToolkitConfig();
 testPublicEndpointAutoSelectionRequiresExplicitFlag();
 testLocalDockerSearxngUsesIsolatedOwnership();
 testFirecrawlInstalledRunnerWritesConfiguredCommand();
 testFirecrawlNpxRunnerWritesConfigWithoutGlobalInstall();
 testFirecrawlBunxRunnerWritesConfigWithoutGlobalInstall();
+testDoctorUsesRuntimeConfigPrecedenceForFirecrawlRunner();
 testDoctorReportsConfiguredFirecrawlRunner();
 
 console.log("bootstrap installer tests passed");

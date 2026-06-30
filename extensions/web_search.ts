@@ -21,7 +21,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { getSearxngUrl } from "./utils/config";
 import { writeWithFallback } from "./utils/output-sink";
-import { searchKeyless } from "./utils/firecrawl";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { runWebSearchCore } from "./utils/web-search-core";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace } from "./utils/render-helpers";
 
@@ -65,7 +65,7 @@ const webSearchTool = defineTool({
     const result = await runWebSearchCore(params, {
       searxngUrl: getSearxngUrl(),
       fetchImpl: fetch,
-      firecrawlSearch: searchKeyless,
+      firecrawl: firecrawlKeyless,
       signal,
     });
 

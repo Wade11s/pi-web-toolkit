@@ -22,7 +22,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-import { scrapeKeyless } from "./utils/firecrawl";
+import { firecrawlKeyless } from "./utils/firecrawl";
 import { extractPreview } from "./utils/content-preview";
 import { writeWithFallback } from "./utils/output-sink";
 import { abbreviateUrl, getDomain, getErrorText, normalizeWhitespace, formatExtraction } from "./utils/render-helpers";
@@ -56,7 +56,7 @@ const firecrawlScrapeTool = defineTool({
   parameters: FirecrawlScrapeParamsSchema,
 
   async execute(_toolCallId, params, signal) {
-    const out = await scrapeKeyless(params.url, {
+    const out = await firecrawlKeyless.scrape(params.url, {
       waitFor: params.waitFor,
       includeTags: params.includeTags,
       excludeTags: params.excludeTags,
